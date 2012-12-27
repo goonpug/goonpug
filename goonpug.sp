@@ -1,3 +1,12 @@
+/*
+ * Goon PUG plugin
+ *
+ * Initial code taken from pimpinjuice's PUG plugin
+ *
+ * Author: pimpinjuice
+ * Author: astroman <peter@pmrowla.com>
+ */
+
 #include <sourcemod>
 #include <cstrike>
 #include <sdktools>
@@ -8,10 +17,16 @@
     #define MAXPLAYERS 64
 #endif
 
+// CVARS
+
+#define MAX_PLAYERS_DEFAULT "10"
+new Handle:hMaxPlayers;
+
+#define HLX_LOG_ADDR_DEFAULT "localhost:27500"
+new Handle:hHlxLogAddr;
+
 new Handle:hTVEnabled;
 new Handle:RestartTimers = INVALID_HANDLE;
-new Handle:hMaxPlayers;
-#define MAX_PLAYERS_DEFAULT "10"
 new OffsetAccount; // MONEY OFFSET
 new bool:bPubChatMuted[MAXPLAYERS+1]=false;
 new bool:bTeamChatMuted[MAXPLAYERS+1]=false;
@@ -173,7 +188,10 @@ CSLTeamOfSteam(const String:steamID[])
 
 bool:AllowBots()
 {
-    return false; // Temp.
+    if (GetConVarInt(hTVEnabled) == 1 )
+        return true; // Bots need to be allowed for gotv.
+    else
+        return false;
 }
 
 ClientDefaults(client)
@@ -821,8 +839,8 @@ StartRulesVote()
  
     new Handle:menu = CreateMenu(Handle_RulesVote);
     SetMenuTitle(menu, "Vote for rule set");
-    AddMenuItem(menu, "csl", "CSL (15 Round Halves, $800)");
-    AddMenuItem(menu, "cgs", "CGS (9 Round Halves, $8000)");
+    AddMenuItem(menu, "csl", "ESL (15 Round Halves, $800)");
+    //AddMenuItem(menu, "cgs", "CGS (9 Round Halves, $8000)");
     SetMenuExitButton(menu, false);
     VoteMenuToAll(menu, 15);
 }
@@ -839,10 +857,15 @@ ChangeMatchState(MatchState:newState)
 
 StartMatchSetup()
 {
+    decl String:hlxAddr[256];
+
     // Vote for rule set.
     PrintToChatAll("[PUG] Starting match setup and votes.");
     ChangeMatchState(MS_Setup);
     StartRulesVote();
+    PrintToChatAll("[PUG] Now tracking stats.");
+    GetConVarString(hHlxLogAddr, hlxAddr, sizeof(hlxAddr));
+    ServerCommand("logaddress_add %s", hlxAddr);
 }
 
 public Action:SayTeamHook(client,args)
@@ -1233,7 +1256,7 @@ public Action:RoundStartCallback(Handle:event, const String:name[], bool:dontBro
 
 public Action:RoundEndCallback(Handle:event, const String:name[], bool:dontBroadcast)
 {
-	if(ReadyUpState()) // sept 24, 2012 - this might fix the round end nonsense
+    if(ReadyUpState()) // sept 24, 2012 - this might fix the round end nonsense
     {
         return Plugin_Continue;
     }
@@ -1986,6 +2009,8 @@ LoadMapsDir()
 
 GoPostgame(winning_team, bool:forfeit = false)
 {
+    decl String:hlxAddr[256];
+
     RoundCounterOn = false;
     // Send stats?
     ChangeMatchState(MS_Post_Match);
@@ -1998,7 +2023,9 @@ GoPostgame(winning_team, bool:forfeit = false)
     }
     
     // Show everyone their stats page.
-    
+    GetConVarString(hHlxLogAddr, hlxAddr, sizeof(hlxAddr));
+    ServerCommand("logaddress_del %s", hlxAddr);
+    PrintToChatAll("[PUG] No longer tracking stats.")
     ClearMatch();
 }
 
@@ -2260,6 +2287,7 @@ public OnPluginStart()
     ServerCommand("exec server_pug.cfg\n");
     OffsetAccount = FindSendPropOffs("CCSPlayer", "m_iAccount");
     hMaxPlayers = CreateConVar("sv_maxplayers", MAX_PLAYERS_DEFAULT, "Match size.", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    hHlxLogAddr = CreateConVar("gp_hlx_log_addr", HLX_LOG_ADDR_DEFAULT, "Hlstats log address", FCVAR_PROTECTED);
     CreateConVar("sm_pug_version", "0.1", "PUG Plugin Version",FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_NOTIFY|FCVAR_DONTRECORD);
     hTVEnabled = FindConVar("tv_enable");
     hBotQuota = FindConVar("bot_quota");
