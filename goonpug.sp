@@ -352,11 +352,18 @@ bool:BadSteamId(const String:steamID[])
     return false; // It's good.
 }
 
-bool:ValidClient(client,bool:check_alive=false)
+bool:ValidClient(client, bool:check_alive=false)
 {
-    if(client>0 && client<=MaxClients && IsClientConnected(client) && IsClientInGame(client))
+    if (client > 0 && client <= MaxClients && IsClientConnected(client) && IsClientInGame(client))
     {
-        if(check_alive && !IsPlayerAlive(client))
+        if (IsFakeClient(client))
+        {
+            decl String:plName[64];
+            GetClientName(client, plName, sizeof(plName));
+            if (StrEqual(plName, "GOTV"))
+                return false;
+        }
+        if (check_alive && !IsPlayerAlive(client))
         {
             return false;
         }
@@ -1846,34 +1853,32 @@ public Action:HookJoinTeam(client, const String:command[], argc)
     GetCmdArg(1, firstParam, 16);
     StripQuotes(firstParam);
     new firstParamNumber = StringToInt(firstParam);
-    if(!ValidClient(client) || IsFakeClient(client) || IsSourceTV(client))
+    if (!ValidClient(client) || IsFakeClient(client) || IsSourceTV(client))
     {
         return Plugin_Continue;        
     }
 
-    if(firstParamNumber == CS_TEAM_SPEC)
+    if (firstParamNumber == CS_TEAM_SPEC)
     {
-        // No.
-        PrintCenterText(client, "CSL: You can't join spectator.");
-        return Plugin_Handled;
+        return Plugin_Continue;
     }
-    else if(firstParamNumber == CS_TEAM_T)
+    else if (firstParamNumber == CS_TEAM_T)
     {
         if(TeamsSetup())
             TryGoT(client);
         else
             return Plugin_Continue;
     }
-    else if(firstParamNumber == CS_TEAM_CT)
+    else if (firstParamNumber == CS_TEAM_CT)
     {
-        if(TeamsSetup())
+        if (TeamsSetup())
             TryGoCT(client);
         else
             return Plugin_Continue;
     }
     else // Autojoin, our own version.
     {
-        if(TeamsSetup())
+        if (TeamsSetup())
             OurAutojoin(client);
         else
             return Plugin_Continue;
@@ -2404,14 +2409,12 @@ StartAuth(client)
 
 bool:IsSourceTV(client)
 {
-    if(!ValidClient(client))
+    if (!ValidClient(client))
         return false;
     decl String:plName[64];
     GetClientName(client, plName, 64);
-    if(IsFakeClient(client) && ( StrEqual(plName,"SourceTV") || StrEqual(plName,"CSL SourceTV") ))
-    {
+    if (IsFakeClient(client) && (StrEqual(plName,"SourceTV") || StrEqual(plName,"CSL SourceTV") || StrEqual(plName, "GOTV")))
         return true;
-    }
     return false;
 }
 
