@@ -4,7 +4,19 @@
  * Author: astroman <peter@pmrowla.com>
  */
 
+//#define DEBUG
+
+#if defined DEBUG
+    #define assert(%1) if (!(%1)) ThrowError("Debug Assertion Failed");
+    #define assert_msg(%1, %2) if (!(%1)) ThrowError(%2);
+#else
+    #define assert(%1)
+    #define assert_msg(%1, %2)
+#endif
+
+#pragma semicolon 1
 #include <sourcemod>
+#include <adt>
 #include <cstrike>
 #include <sdktools>
 #include <sdktools_functions>
@@ -22,27 +34,24 @@
  */
 enum MatchState
 {
-    MS_PRE_SETUP = 0,
+    MS_WARMUP = 0,
     MS_SETUP,
-    MS_PRE_1H,
-    MS_LIVE_1H,
-    MS_PRE_2H,
-    MS_LIVE_2H,
-    MS_PRE_OT_1H,
-    MS_LIVE_OT_1H,
-    MS_PRE_OT_2H,
-    MS_LIVE_OT_2H,
+    MS_PRE_LIVE,
+    MS_LIVE,
     MS_POST_MATCH,
 };
 
 // Global convar handles
-new Handle:g_hMaxPugPlayers;
+new Handle:g_cvar_maxPugPlayers;
+new Handle:g_cvar_tvEnabled;
 
-// GO:TV
-new Handle:g_hTvEnabled;
+// Global menu handles
+new Handle:g_pugMapList = INVALID_HANDLE;
+new Handle:g_idleMapList = INVALID_HANDLE;
 
-// Current match state
-new MatchState:g_matchState = MS_PRE_SETUP;
+// Global match information
+new MatchState:g_matchState = MS_WARMUP;
+new String:g_matchMap[64] = "";
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
@@ -66,16 +75,60 @@ public OnPluginStart()
     // Set up GoonPUG convars
     CreateConVar("sm_gp_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
                  FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
-    g_hMaxPugPlayers = CreateConVar("gp_max_pug_players", "10",
+    g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
                                     "Maximum players allowed in a PUG",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
 
     // Load global convars
-    g_hTvEnabled = FindConVar("tv_enable");
+    g_cvar_tvEnabled = FindConVar("tv_enable");
 
     // Register commands
-    RegConsoleCmd("sm_ready", CmdReady, "Sets a client's status to ready.");
-    RegConsoleCmd("sm_unready", CmdUnReady, "Sets a client's status to not ready.");
+    RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
+    RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
+}
+
+public OnMapStart()
+{
+    ReadMapLists();
+}
+
+public OnMapEnd()
+{
+    CloseMapLists();
+}
+
+/**
+ * Read map lists that we need
+ *
+ * This should only be done once per map
+ */
+ReadMapLists()
+{
+    new serial = -1;
+    g_pugMapList = ReadMapList(INVALID_HANDLE, serial, "pug_match");
+    if (g_pugMapList == INVALID_HANDLE)
+        ThrowError("Could not read find pug_match maplist");
+
+    g_idleMapList = ReadMapList(INVALID_HANDLE, serial, "pug_idle");
+    if (g_idleMapList == INVALID_HANDLE)
+        ThrowError("Could not find pug_idle maplist");
+}
+
+/**
+ * Close map lists
+ */
+CloseMapLists()
+{
+    if (g_pugMapList != INVALID_HANDLE)
+    {
+        CloseHandle(g_pugMapList);
+        g_pugMapList = INVALID_HANDLE;
+    }
+    if (g_idleMapList != INVALID_HANDLE)
+    {
+        CloseHandle(g_idleMapList);
+        g_idleMapList = INVALID_HANDLE;
+    }
 }
 
 /**
@@ -102,19 +155,155 @@ bool:IsValidPlayer(client)
 }
 
 /**
+ * Change the match state
+ */
+ChangeMatchState(MatchState:newState)
+{
+    g_matchState = newState;
+
+    if (NeedReadyUp())
+    {
+        ResetReadyUp();
+    }
+}
+
+ChangeCvar(const String:name[], const String:value[])
+{
+    new Handle:cvar = FindConVar(name);
+    SetConVarString(cvar, value);
+}
+
+/**
+ * Reset ready up statuses
+ */
+ResetReadyUp()
+{
+    ChangeCvar("mp_freezetime", "3");
+    ChangeCvar("mp_buytime", "999");
+
+    for (new i = 0; i <= MAXPLAYERS; i++)
+    {
+        g_playerReady[i] = false;
+    }
+}
+
+/**
  * Check if the match is in a state where players need to ready up
  */
 bool:NeedReadyUp()
 {
-    switch (g_matchState)
+    if (g_matchState == MS_WARMUP || g_matchState == MS_PRE_LIVE)
     {
-        case MS_PRE_SETUP, MS_PRE_1H, MS_PRE_2H, MS_PRE_OT_1H, MS_PRE_OT_2H:
-        {
-            return true;
-        }
+        return true;
     }
 
     return false;
+}
+
+Handle:BuildMapVoteMenu()
+{
+    assert(mapList != INVALID_HANDLE)
+
+    new Handle:menu = CreateMenu(Menu_MapVote);
+    SetMenuTitle(menu, "Vote for the map to play");
+    for (new i = 0; i < GetArraySize(g_pugMapList); i++)
+    {
+        decl String:mapname[64];
+        GetArrayString(g_pugMapList, i, mapname, sizeof(mapname));
+        if (IsMapValid(mapname))
+        {
+            AddMenuItem(menu, mapname, mapname);
+        }
+    }
+    SetMenuExitButton(menu, false);
+
+    return menu;
+}
+
+public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
+{
+    switch (action)
+    {
+        case MenuAction_End:
+        {
+            CloseHandle(menu);
+        }
+        case MenuAction_VoteEnd:
+        {
+            new String:mapname[64];
+            GetMenuItem(menu, param1, mapname, sizeof(mapname));
+            SetMatchMap(mapname);
+        }
+        case MenuAction_VoteCancel:
+        {
+            new len = GetArraySize(g_pugMapList);
+            decl String:mapname[64];
+            GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
+                           mapname, sizeof(mapname));
+            PrintToChatAll("[GP] Vote cancelled, using random map.");
+            SetMatchMap(mapname);
+        }
+    }
+}
+
+SetMatchMap(const String:mapname[])
+{
+    PrintToChatAll("[GP] Map will be: %s.", mapname);
+    Format(g_matchMap, sizeof(g_matchMap), "%s", mapname);
+}
+
+/**
+ * Selects a PUG map via player vote
+ */
+StartMatchMapVote()
+{
+    new Handle:menu = BuildMapVoteMenu();
+    if (IsVoteInProgress())
+        CancelVote();
+    VoteMenuToAll(menu, 15);
+}
+
+/**
+ * Set up a the match
+ */
+StartMatchSetup()
+{
+    ChangeMatchState(MS_SETUP);
+    StartMatchMapVote();
+}
+
+/**
+ * Start the match
+ */
+StartLiveMatch()
+{
+}
+
+/**
+ * Call the appropriate match state function
+ *
+ * This function should be called when all PUG players have
+ * readied up.
+ */
+OnAllReady()
+{
+    switch (g_matchState)
+    {
+        case MS_WARMUP:
+        {
+            StartMatchSetup();
+        }
+        case MS_PRE_LIVE:
+        {
+            StartLiveMatch();
+        }
+#if defined DEBUG
+        case default:
+        {
+            ThrowError("OnAllReady: Invalid match state!");
+        }
+#endif
+    }
 }
 
 /**
@@ -143,14 +332,14 @@ CheckAllReady()
     if (allReady)
     {
         // Make sure we have enough players
-        new neededCount = GetConVarInt(g_hMaxPugPlayers);
+        new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
 
         if (playerCount < neededCount)
         {
-            allReady = false
+            allReady = false;
         }
 
-        PrintToChatAll("[GoonPUG] Still waiting on %d players to join...",
+        PrintToChatAll("[GP] Still waiting on %d players to join...",
                        neededCount - playerCount);
     }
 
@@ -160,26 +349,29 @@ CheckAllReady()
 /**
  * Sets a player's ready up state to ready
  */
-public Action:CmdReady(client, args)
+public Action:Command_Ready(client, args)
 {
     if (!NeedReadyUp())
     {
-        PrintToChat(client, "[GoonPUG] You don't need to ready up right now.");
+        PrintToChat(client, "[GP] You don't need to ready up right now.");
         return Plugin_Handled;
     }
 
     if (g_playerReady[client])
     {
-        PrintToChat(client, "[GoonPUG] You are already ready.")
+        PrintToChat(client, "[GP] You are already ready.");
     }
     else
     {
         decl String:name[64];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
-        PrintToChatAll("[GoonPUG] %s is now ready.", name);
+        PrintToChatAll("[GP] %s is now ready.", name);
 
-        CheckAllReady()
+        if (CheckAllReady())
+        {
+            OnAllReady();
+        }
     }
 
     return Plugin_Handled;
@@ -188,27 +380,27 @@ public Action:CmdReady(client, args)
 /**
  * Sets a player's ready up state to not ready
  */
-public Action:CmdUnReady(client, args)
+public Action:Command_Unready(client, args)
 {
     if (!NeedReadyUp())
     {
-        PrintToChat(client, "[GoonPUG] You don't need to ready up right now.");
+        PrintToChat(client, "[GP] You don't need to ready up right now.");
         return Plugin_Handled;
     }
 
     if (!g_playerReady[client])
     {
-        PrintToChat(client, "[GoonPUG] You are already not ready.")
+        PrintToChat(client, "[GP] You are already not ready.");
     }
     else
     {
         decl String:name[64];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = false;
-        PrintToChatAll("[GoonPUG] %s is no longer ready.", name);
+        PrintToChatAll("[GP] %s is no longer ready.", name);
 
         // Call this check to print the waiting for count
-        CheckAllReady()
+        CheckAllReady();
     }
 
     return Plugin_Handled;
