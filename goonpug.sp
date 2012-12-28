@@ -518,6 +518,10 @@ StartFirstHalf()
         }        
     }
 
+    decl String:hlxAddr[256];
+    PrintToChatAll("[PUG] Now tracking stats.");
+    GetConVarString(hHlxLogAddr, hlxAddr, sizeof(hlxAddr));
+    ServerCommand("logaddress_add %s", hlxAddr);
     ChangeMatchState(MS_Live_First_Half);
     
     PrintToChatAll("[PUG] Starting the first half...");
@@ -647,13 +651,6 @@ TryStartMatch()
     }                                                                                                   
 }
 
-RulesCSL()
-{
-    PrintToChatAll("[PUG] Ruleset will be: PUG");
-    Ruleset = Rules_PUG;
-    TeamVote();
-}
-
 SetMatchMap(const String:mapname[])
 {
     PrintToChatAll("[PUG] Map will be: %s", mapname);
@@ -711,62 +708,9 @@ StartMapVote()
     VoteMenuToAll(menu, 15);
 }
 
-BHopOn()
-{
-    PrintToChatAll("[PUG] Bunnyhopping will be enabled.");
-    BunnyHopMode = true;
-    StartMapVote();
-}
-
-BHopOff()
-{
-    PrintToChatAll("[PUG] Bunnyhopping will be disabled.");
-    BunnyHopMode = false;
-    StartMapVote();
-}
-
-public Handle_BHopVote(Handle:menu, MenuAction:action, param1, param2)
-{
-    if (action == MenuAction_End)
-    {
-        CloseHandle(menu);
-    } else if (action == MenuAction_VoteEnd) {
-        // 0 = Off
-        // 1 = On
-        if(param1 == 0)
-        {
-            BHopOff();
-        }
-        else
-        {
-            BHopOn();
-        }
-    }
-    else if(action==MenuAction_VoteCancel)
-    {
-        BHopOff();
-    }
-}
-
-BHopVote()
-{
-    if(IsVoteInProgress())
-    {
-        CancelVote();
-    }
- 
-    new Handle:menu = CreateMenu(Handle_BHopVote);
-    SetMenuTitle(menu, "Vote for bunny hopping");
-    AddMenuItem(menu, "off", "Off");
-    AddMenuItem(menu, "on", "On");
-    SetMenuExitButton(menu, false);
-    VoteMenuToAll(menu, 15);
-}
-
 TeamsRandom()
 {
      CaptainMode = false;
-     BHopVote();
 }
 
 /*public Handle_TeamVote(Handle:menu, MenuAction:action, param1, param2)
@@ -806,52 +750,6 @@ TeamVote()
     VoteMenuToAll(menu, 15);*/
 }
 
-RulesCGS()
-{
-    PrintToChatAll("[PUG] Ruleset will be: CGS");
-    Ruleset = Rules_CGS;
-    TeamVote();
-}
-
-public Handle_RulesVote(Handle:menu, MenuAction:action, param1, param2)
-{
-    if (action == MenuAction_End)
-    {
-        CloseHandle(menu);
-    } else if (action == MenuAction_VoteEnd) {
-        // 0 = CSL
-        // 1 = Pug
-        if(param1 == 0)
-        {
-            RulesCSL();
-        }
-        else
-        {
-            RulesCGS();
-        }
-    }
-    else if(action==MenuAction_VoteCancel)
-    {
-        RulesCSL();
-    }
-}
-
-StartRulesVote()
-{
-    // Choose a rule set.
-    if (IsVoteInProgress())
-    {
-        CancelVote();
-    }
- 
-    new Handle:menu = CreateMenu(Handle_RulesVote);
-    SetMenuTitle(menu, "Vote for rule set");
-    AddMenuItem(menu, "csl", "ESL (15 Round Halves, $800)");
-    //AddMenuItem(menu, "cgs", "CGS (9 Round Halves, $8000)");
-    SetMenuExitButton(menu, false);
-    VoteMenuToAll(menu, 15);
-}
-
 ChangeMatchState(MatchState:newState)
 {
     gMatchState = newState;
@@ -864,15 +762,19 @@ ChangeMatchState(MatchState:newState)
 
 StartMatchSetup()
 {
-    decl String:hlxAddr[256];
-
-    // Vote for rule set.
-    PrintToChatAll("[PUG] Starting match setup and votes.");
+    PrintToChatAll("[PUG] Starting match setup.");
     ChangeMatchState(MS_Setup);
-    StartRulesVote();
-    PrintToChatAll("[PUG] Now tracking stats.");
-    GetConVarString(hHlxLogAddr, hlxAddr, sizeof(hlxAddr));
-    ServerCommand("logaddress_add %s", hlxAddr);
+
+    // Force ruleset
+    PrintToChatAll("[PUG] Ruleset will be: ESL PUG");
+    Ruleset = Rules_PUG;
+
+    // Select team mode (random/captains)
+    TeamVote();
+
+    // Disable bunnyhopping
+    BunnyHopMode = false
+    StartMapVote();
 }
 
 public Action:SayTeamHook(client,args)
@@ -1984,7 +1886,7 @@ LoadMapsDir()
 {
     // Build path and look for .bsp files.
     new String:mapsDir[1024];
-    BuildPath(Path_SM, mapsDir, 1024, "../../maps/");
+    BuildPath(Path_SM, mapsDir, 1024, "../../maps/PUG/");
     new String:path[1024];
     new Handle:dir = OpenDirectory(mapsDir);
     new FileType:type;
