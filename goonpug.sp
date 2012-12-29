@@ -70,6 +70,10 @@ new g_whosePick = -1;
 new g_ctCaptain;
 new g_tCaptain;
 
+// Team Management globals
+new bool:g_lockTeams = false;
+new g_playerTeam[MAXPLAYERS + 1];
+
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
 
@@ -323,24 +327,33 @@ public Action:Timer_NominateCaptains(Handle:timer)
 /**
  * Returns a client ID that matches the specified name.
  *
+ * @param exact true if only exact matches are acceptable
+ *
  * @retval -1 No matching client found
  * @retval -2 If more than one possible match was found
  */
-FindClientByName(const String:name[])
+FindClientByName(const String:name[], bool:exact=false)
 {
     new client = -1;
     for (new i = 1; i <= MaxClients; i++)
     {
         decl String:clientName[64];
         GetClientName(i, clientName, sizeof(clientName));
-        if (StrContains(clientName, name, false))
+        if (exact && StrEqual(clientName, name))
         {
-            if (client != -1)
+            return i;
+        }
+        else
+        {
+            if (StrContains(clientName, name, false))
             {
-                // Multiple matches
-                return -2;
+                if (client != -1)
+                {
+                    // Multiple matches
+                    return -2;
+                }
+                client = i;
             }
-            client = i;
         }
     }
 
@@ -462,6 +475,7 @@ ChooseCaptains()
         // Select a random player
         new captain = GetArrayCell(tiedPlayers,
                                    GetRandomInt(0, GetArraySize(tiedPlayers)));
+        CloseHandle(tiedPlayers);
         if (SelectCaptain(captain) == Plugin_Handled)
             return;
     }
@@ -606,11 +620,144 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
 }
 
 /**
+ * Lock team status for all players
+ */
+LockAndClearTeams()
+{
+    g_lockTeams = true;
+
+    // Reset player teams
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        g_playerTeam[i] = CS_TEAM_NONE;
+    }
+}
+
+/**
  * Actual picking of teams
  */
 PickTeams()
 {
     ChangeMatchState(MS_PICK_TEAMS);
+    LockAndClearTeams();
+    ForceAllSpec();
+    ForcePlayerTeam(g_ctCaptain, CS_TEAM_CT);
+    ForcePlayerTeam(g_tCaptain, CS_TEAM_T);
+    CreateTimer(1.0, Timer_PickTeams, _, TIMER_REPEAT);
+}
+
+/**
+ * Runs until teams have been picked.
+ */
+public Action:Timer_PickTeams(Handle:timer)
+{
+    static Handle:pickMenu = INVALID_HANDLE;
+
+    // If invalid we can start the next pick.
+    if (pickMenu != INVALID_HANDLE)
+        return Plugin_Continue;
+
+    new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
+
+    if (GetTeamClientCount(CS_TEAM_CT) + GetTeamClientCount(CS_TEAM_T) == neededCount)
+    {
+        PrintToChatAll("[GP] Done picking teams.");
+        PrintToChatAll("[GP] Changing to match map in 10 seconds.");
+        return Plugin_Stop;
+    }
+    else
+    {
+        decl String:captainName[64];
+        GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
+        PrintToChatAll("[GP] %s's pick...");
+        pickMenu = BuildPickMenu();
+        DisplayMenu(pickMenu, g_captains[g_whosePick], 0);
+    }
+    return Plugin_Continue;
+}
+
+/**
+ * Builds a menu with a list of pickable players
+ */
+Handle:BuildPickMenu()
+{
+    new Handle:menu = CreateMenu(Menu_PickPlayer);
+    new Handle:pickable = CreateArray();
+    decl i;
+
+    for (i = 1; i <= MaxClients; i++)
+    {
+        if (GetClientTeam(i) == CS_TEAM_SPECTATOR && IsValidPlayer(i))
+        {
+            PushArrayCell(pickable, i);
+        }
+    }
+
+    for (i = 0; i < GetArraySize(pickable); i++)
+    {
+        decl String:name[64];
+        GetClientName(GetArrayCell(pickable, i), name, sizeof(name));
+        AddMenuItem(menu, name, name);
+    }
+
+    SetMenuTitle(menu, "Choose a player:");
+    SetMenuExitButton(menu, false);
+
+    CloseHandle(pickable);
+    return menu;
+}
+
+/**
+ * Menu handler for picking a player
+ */
+public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
+{
+    switch (action)
+    {
+        case MenuAction_Select:
+        {
+            assert(param1 == g_captains[g_whosePick])
+
+            decl String:pickName[64];
+            GetMenuItem(menu, param2, pickName, sizeof(pickName));
+            new pick = FindClientByName(pickName, true);
+            decl String:captainName[64];
+            GetClientName(param1, captainName, sizeof(captainName));
+            PrintToChatAll("[GP] %s picks %s.");
+            ForcePlayerTeam(pick, GetClientTeam(param1));
+            g_whosePick ^= 1;
+        }
+        case MenuAction_End:
+        {
+            CloseHandle(menu);
+            menu = INVALID_HANDLE;
+        }
+    }
+}
+
+/**
+ * Force a player to join the specified team
+ */
+ForcePlayerTeam(client, team)
+{
+    assert(g_lockTeams == true)
+
+    g_playerTeam[client] = team;
+    if (IsValidPlayer(client))
+    {
+        ChangeClientTeam(client, team);
+    }
+}
+
+/**
+ * Force all players into spectator team
+ */
+ForceAllSpec()
+{
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        ForcePlayerTeam(i, CS_TEAM_SPECTATOR);
+    }
 }
 
 /**
