@@ -337,22 +337,25 @@ FindClientByName(const String:name[], bool:exact=false)
     new client = -1;
     for (new i = 1; i <= MaxClients; i++)
     {
-        decl String:clientName[64];
-        GetClientName(i, clientName, sizeof(clientName));
-        if (exact && StrEqual(clientName, name))
+        if (IsValidPlayer(i))
         {
-            return i;
-        }
-        else
-        {
-            if (StrContains(clientName, name, false))
+            decl String:clientName[64];
+            GetClientName(i, clientName, sizeof(clientName));
+            if (exact && StrEqual(clientName, name))
             {
-                if (client != -1)
+                return i;
+            }
+            else
+            {
+                if (StrContains(clientName, name, false) != -1)
                 {
-                    // Multiple matches
-                    return -2;
+                    if (client != -1)
+                    {
+                        // Multiple matches
+                        return -2;
+                    }
+                    client = i;
                 }
-                client = i;
             }
         }
     }
