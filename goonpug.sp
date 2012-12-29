@@ -57,6 +57,7 @@ new Handle:g_idleMapList = INVALID_HANDLE;
 // Global match information
 new MatchState:g_matchState = MS_WARMUP;
 new String:g_matchMap[64] = "";
+new Handle:g_matchInfoTimer = INVALID_HANDLE;
 
 // Global team choosing info
 new Handle:g_nominateTimer = INVALID_HANDLE;
@@ -65,6 +66,9 @@ new g_playerNominations[MAXPLAYERS + 1][2];
 // Nomination count for each player
 new g_nominations[MAXPLAYERS + 1];
 new g_captains[2];
+new g_whosePick = -1;
+new g_ctCaptain;
+new g_tCaptain;
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
@@ -521,18 +525,92 @@ NominateCaptains()
 }
 
 /**
+ * Starts a timer to update a box with match information
+ */
+
+
+/**
  * Pick teams
  */
 ChooseTeams()
 {
+    ChangeMatchState(MS_PICK_TEAMS);
+    // Stop taking nominations
     if (g_nominateTimer != INVALID_HANDLE)
     {
         CloseHandle(g_nominateTimer);
         g_nominateTimer = INVALID_HANDLE;
     }
 
-    ChangeMatchState(MS_PICK_TEAMS);
+    ChooseFirstPick();
+}
 
+/**
+ * Determines which captain picks first.
+ *
+ * The other captain then chooses which side (s)he wants first.
+ */
+ChooseFirstPick()
+{
+    g_whosePick = GetRandomInt(0, 1);
+    decl String:name[64];
+    GetClientName(g_captains[g_whosePick], name, sizeof(name));
+    PrintToChatAll("[GP] %s will pick first.");
+
+    new Handle:menu = BuildSideMenu();
+    DisplayMenu(menu, g_captains[g_whosePick ^ 1], 0);
+}
+
+/**
+ * Builds a menu for picking sides
+ */
+Handle:BuildSideMenu()
+{
+    new Handle:menu = CreateMenu(Menu_Sides);
+    SetMenuTitle(menu, "Which side do you want first?");
+    AddMenuItem(menu, "CT", "CT");
+    AddMenuItem(menu, "T", "T");
+    SetMenuExitButton(menu, false);
+    return menu;
+}
+
+/**
+ * Menu handler for picking a side
+ */
+public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
+{
+    switch (action)
+    {
+        case MenuAction_Select:
+        {
+            decl String:info[8];
+            GetMenuItem(menu, param2, info, sizeof(info));
+            if (StrEqual(info, "CT"))
+            {
+                g_ctCaptain = param1;
+            }
+            else
+            {
+                g_tCaptain = param1;
+            }
+            decl String:name[64];
+            GetClientName(param1, name, sizeof(name));
+            PrintToChatAll("[GP] %s will take %s side first.", name, info);
+            PickTeams();
+        }
+        case MenuAction_End:
+        {
+            CloseHandle(menu);
+        }
+    }
+}
+
+/**
+ * Actual picking of teams
+ */
+PickTeams()
+{
+    ChangeMatchState(MS_PICK_TEAMS);
 }
 
 /**
@@ -541,7 +619,39 @@ ChooseTeams()
 StartMatchSetup()
 {
     ChooseMatchMap();
+    StartMatchInfoText();
     NominateCaptains();
+}
+
+StartMatchInfoText()
+{
+    g_matchInfoTimer = CreateTimer(1.0, Timer_MatchInfo, _, TIMER_REPEAT);
+}
+
+/**
+ * Prints a continually updated hinttext box with info about an upcoming match
+ */
+public Action:Timer_MatchInfo(Handle:timer)
+{
+    switch (g_matchState)
+    {
+        case MS_NOMINATE_CAPTAINS:
+        {
+            PrintHintTextToAll("Match Info:\nMap: %s",
+                               g_matchMap);
+        }
+        case MS_PICK_TEAMS:
+        {
+            decl String:ctName[64];
+            decl String:tName[64];
+            GetClientName(g_ctCaptain, ctName, sizeof(ctName));
+            GetClientName(g_tCaptain, tName, sizeof(tName));
+            PrintHintTextToAll("Match Info:\nMap: %s\n%s (CT) vs %s (T)",
+                               g_matchMap, ctName, tName);
+        }
+    }
+
+    return Plugin_Continue;
 }
 
 /**
