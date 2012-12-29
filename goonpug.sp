@@ -302,7 +302,10 @@ public Action:Timer_NominateCaptains(Handle:timer)
     count++;
     if (count >= 6)
     {
-        ChooseTeams();
+        CloseHandle(g_nominateTimer);
+        g_nominateTimer = INVALID_HANDLE;
+
+        ChooseCaptains();
         return Plugin_Stop;
     }
 
@@ -422,9 +425,51 @@ UpdateNominations(client)
 }
 
 /**
- * Selects the specified player as a captain
+ * Chooses captains based on nominations
+ *
+ * This will be run if 2 players don't receive the required
+ * votes within 60 seconds.
  */
-SelectCaptain(client)
+ChooseCaptains()
+{
+    for (;;)
+    {
+        new Handle:tiedPlayers = CreateArray();
+        new maxVotes = 0;
+
+        //Get a list of players tied for the max number of votes
+        for (new i = 1; i <= MaxClients; i++)
+        {
+            if (g_captains[0] == i || g_captains[1] == i)
+                continue;
+
+            if (g_nominations[i] > maxVotes)
+            {
+                ClearArray(tiedPlayers);
+                maxVotes = g_nominations[i];
+                PushArrayCell(tiedPlayers, i);
+            }
+            else if (g_nominations[i] == maxVotes)
+            {
+                PushArrayCell(tiedPlayers, i);
+            }
+        }
+
+        // Select a random player
+        new captain = GetArrayCell(tiedPlayers,
+                                   GetRandomInt(0, GetArraySize(tiedPlayers)));
+        if (SelectCaptain(captain) == Plugin_Handled)
+            return;
+    }
+}
+
+/**
+ * Selects the specified player as a captain
+ *
+ * @retval Plugin_Continue if we should continue
+ * @retval Plugin_Handled if all captains are selected
+ */
+Action:SelectCaptain(client)
 {
     assert(g_captains[0] == 0 || g_captains[1] == 0)
 
@@ -436,11 +481,13 @@ SelectCaptain(client)
     if (g_captains[0] == 0)
     {
         g_captains[0] = client;
+        return Plugin_Continue;
     }
     else
     {
         g_captains[1] = client;
         ChooseTeams();
+        return Plugin_Handled;
     }
 }
 
@@ -466,7 +513,7 @@ ResetPlayerNominations()
 /**
  * Selects teams via captains
  */
-ChooseCaptains()
+NominateCaptains()
 {
     ChangeMatchState(MS_NOMINATE_CAPTAINS);
     ResetPlayerNominations();
@@ -478,6 +525,14 @@ ChooseCaptains()
  */
 ChooseTeams()
 {
+    if (g_nominateTimer != INVALID_HANDLE)
+    {
+        CloseHandle(g_nominateTimer);
+        g_nominateTimer = INVALID_HANDLE;
+    }
+
+    ChangeMatchState(MS_PICK_TEAMS);
+
 }
 
 /**
@@ -486,7 +541,7 @@ ChooseTeams()
 StartMatchSetup()
 {
     ChooseMatchMap();
-    ChooseCaptains();
+    NominateCaptains();
 }
 
 /**
