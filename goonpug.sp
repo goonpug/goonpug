@@ -474,7 +474,7 @@ ChooseCaptains()
 
         // Select a random player
         new captain = GetArrayCell(tiedPlayers,
-                                   GetRandomInt(0, GetArraySize(tiedPlayers)));
+                                   GetRandomInt(0, GetArraySize(tiedPlayers) - 1));
         CloseHandle(tiedPlayers);
         if (SelectCaptain(captain) == Plugin_Handled)
             return;
