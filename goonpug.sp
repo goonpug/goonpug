@@ -100,6 +100,7 @@ public OnPluginStart()
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
+    RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -113,12 +114,9 @@ public OnMapStart()
     ReadMapLists();
     switch (g_matchState)
     {
-        case MS_WARMUP:
+        case MS_WARMUP, MS_PRE_LIVE:
         {
-            StartWarmup();
-        }
-        case MS_PRE_LIVE:
-        {
+            StartReadyUpState();
         }
 #if defined DEBUG
         case default:
@@ -197,11 +195,6 @@ bool:IsValidPlayer(client)
 ChangeMatchState(MatchState:newState)
 {
     g_matchState = newState;
-
-    if (NeedReadyUp())
-    {
-        ResetReadyUp();
-    }
 }
 
 ChangeCvar(const String:name[], const String:value[])
@@ -588,8 +581,21 @@ public Action:Timer_PickTeams(Handle:timer)
 
     if (GetTeamClientCount(CS_TEAM_CT) + GetTeamClientCount(CS_TEAM_T) == neededCount)
     {
+        CloseHandle(timer);
         PrintToChatAll("[GP] Done picking teams.");
-        PrintToChatAll("[GP] Changing to match map in 10 seconds.");
+
+        decl String:curmap[64];
+        GetCurrentMap(curmap, sizeof(curmap));
+        if (!StrEqual(curmap, g_matchMap))
+        {
+            ChangeMatchState(MS_PRE_LIVE);
+            PrintToChatAll("[GP] Changing map to %s in 10 seconds...", g_matchMap);
+            CreateTimer(10.0, Timer_MatchMap);
+        }
+        else
+        {
+            StartLiveMatch();
+        }
         return Plugin_Stop;
     }
     else
@@ -726,6 +732,15 @@ public Action:Timer_MatchInfo(Handle:timer)
  */
 StartLiveMatch()
 {
+    ChangeMatchState(MS_LIVE);
+    ServerCommand("exec esl5on5.cfg\n");
+    PrintToChatAll("[GP] Live on 3...");
+    ServerCommand("mp_restartgame 1\n");
+    ServerCommand("mp_restartgame 1\n");
+    PrintToChatAll("[GP] Next round is live.");
+    ServerCommand("mp_restartgame 5\n");
+    PrintToChatAll("[GP] Match is live!");
+    PrintCenterTextAll("Match is live!");
 }
 
 /**
@@ -756,11 +771,11 @@ OnAllReady()
 }
 
 /**
- * Starts the warmup/idle stage
+ * Changes the map to the match map
  */
-StartWarmup()
+public Action:Timer_MatchMap(Handle:timer)
 {
-    StartReadyUpState();
+    ForceChangeLevel(g_matchMap, "Changing to match map");
 }
 
 /**
@@ -828,6 +843,15 @@ CheckAllReady()
 
     new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
     return (neededCount - playerCount);
+}
+
+/**
+ * Executes a lo3 and starts a match
+ */
+public Action:Command_Lo3(client, args)
+{
+    StartLiveMatch();
+    return Plugin_Handled;
 }
 
 /**
