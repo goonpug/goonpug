@@ -98,6 +98,7 @@ public OnPluginStart()
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
+    RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -115,7 +116,7 @@ public OnMapStart()
     {
         case MS_WARMUP, MS_PRE_LIVE:
         {
-            StartReadyUpState();
+            StartReadyUp();
         }
 #if defined DEBUG
         case default:
@@ -808,7 +809,7 @@ public Action:Timer_MatchMap(Handle:timer)
  *
  * TODO: kick a player if not ready after a certain amount of time
  */
-StartReadyUpState()
+StartReadyUp()
 {
     ServerCommand("exec goonpug_warmup.cfg\n");
     ResetReadyUp();
@@ -904,6 +905,16 @@ public Action:Timer_IdleMap(Handle:timer)
     GetNextMap(map, sizeof(map));
     ChangeMatchState(MS_WARMUP);
     ForceChangeLevel(map, "Changing to idle map");
+}
+
+/**
+ * Forces the start of a warmup stage
+ */
+public Action:Command_Warmup(client, args)
+{
+    ChangeMatchState(MS_WARMUP);
+    StartReadyUp();
+    return Plugin_Handled;
 }
 
 /**
