@@ -263,8 +263,9 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
     {
         case MenuAction_End:
         {
-            CreateTimer(1.0, Timer_MapVoteEnd);
             CloseHandle(menu);
+            StartMatchInfoText();
+            ChooseCaptains();
         }
         case MenuAction_VoteEnd:
         {
@@ -291,16 +292,6 @@ SetMatchMap(const String:mapname[])
 {
     PrintToChatAll("[GP] Map will be: %s.", mapname);
     Format(g_matchMap, sizeof(g_matchMap), "%s", mapname);
-}
-
-/**
- * Timer to call the next steps after map voting is done
- */
-public Action:Timer_MapVoteEnd(Handle:timer)
-{
-    CloseHandle(timer);
-    StartMatchInfoText();
-    ChooseCaptains();
 }
 
 /**
@@ -383,18 +374,9 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 {
     if (action == MenuAction_End)
     {
-        CreateTimer(1.0, Timer_CaptainsVoteEnd);
         CloseHandle(menu);
+        ChooseFirstPick();
     }
-}
-
-/**
- * Calls the next step after voting for captains is done
- */
-public Action:Timer_CaptainsVoteEnd(Handle:timer)
-{
-    CloseHandle(timer);
-    ChooseFirstPick();
 }
 
 /**
