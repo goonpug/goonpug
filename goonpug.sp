@@ -729,17 +729,34 @@ public Action:Timer_MatchInfo(Handle:timer)
 
 /**
  * Start the match
+ *
+ * Does a lo3
  */
 StartLiveMatch()
 {
     ChangeMatchState(MS_LIVE);
     ServerCommand("exec esl5on5.cfg\n");
-    PrintToChatAll("[GP] Live on 3...");
+    PrintCenterTextAll("Live on 3...");
     ServerCommand("mp_restartgame 1\n");
+    CreateTimer(2.5, Timer_Lo3First);
+}
+
+public Action:Timer_Lo3First(Handle:timer)
+{
+    PrintCenterTextAll("Live on 2...");
     ServerCommand("mp_restartgame 1\n");
-    PrintToChatAll("[GP] Next round is live.");
+    CreateTimer(2.5, Timer_Lo3Second);
+}
+
+public Action:Timer_Lo3Second(Handle:timer)
+{
+    PrintCenterTextAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
-    PrintToChatAll("[GP] Match is live!");
+    CreateTimer(5.5, Timer_Lo3Third);
+}
+
+public Action:Timer_Lo3Third(Handle:timer)
+{
     PrintCenterTextAll("Match is live!");
 }
 
@@ -796,6 +813,14 @@ public Action:Timer_ReadyUp(Handle:timer)
 {
     static count = 0;
     static neededCount = -1;
+
+    // If the state was changed manually kill the ready up timer
+    // This can happen if an admin forces a lo3
+    if (!NeedReadyUp())
+    {
+        CloseHandle(timer);
+        return Plugin_Stop;
+    }
 
     count++;
     neededCount = CheckAllReady();
