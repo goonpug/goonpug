@@ -42,13 +42,13 @@ enum MatchState
     MS_CAPTAINS_VOTE,
     MS_PICK_TEAMS,
     MS_PRE_LIVE,
+    MS_LO3,
     MS_LIVE,
     MS_POST_MATCH,
 };
 
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers;
-new Handle:g_cvar_tvEnabled;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -94,9 +94,6 @@ public OnPluginStart()
                                     "Maximum players allowed in a PUG",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
 
-    // Load global convars
-    g_cvar_tvEnabled = FindConVar("tv_enable");
-
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
@@ -107,6 +104,7 @@ public OnPluginStart()
 
     // Hook events
     HookEvent("cs_intermission", Event_CsIntermission);
+    HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
 }
 
 public OnMapStart()
@@ -588,7 +586,7 @@ public Action:Timer_PickTeams(Handle:timer)
         GetCurrentMap(curmap, sizeof(curmap));
         if (!StrEqual(curmap, g_matchMap))
         {
-            ChangeMatchState(MS_PRE_LIVE);
+            SetNextMap(g_matchMap);
             PrintToChatAll("[GP] Changing map to %s in 10 seconds...", g_matchMap);
             CreateTimer(10.0, Timer_MatchMap);
         }
@@ -734,8 +732,16 @@ public Action:Timer_MatchInfo(Handle:timer)
  */
 StartLiveMatch()
 {
-    ChangeMatchState(MS_LIVE);
-    ServerCommand("exec esl5on5.cfg\n");
+    ServerCommand("tv_stoprecord\n");
+    new time = GetTime();
+    decl String:timestamp[128];
+    FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
+    decl String:map[64];
+    GetCurrentMap(map, sizeof(map));
+
+    ServerCommand("tv_record %s_%s\n", timestamp, map);
+    ChangeMatchState(MS_LO3);
+    ServerCommand("exec goonpug_match.cfg\n");
     PrintToChatAll("Live on 3...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3First);
@@ -757,6 +763,7 @@ public Action:Timer_Lo3Second(Handle:timer)
 
 public Action:Timer_Lo3Third(Handle:timer)
 {
+    ChangeMatchState(MS_LIVE);
     PrintCenterTextAll("Match is live!");
 }
 
@@ -792,7 +799,10 @@ OnAllReady()
  */
 public Action:Timer_MatchMap(Handle:timer)
 {
-    ForceChangeLevel(g_matchMap, "Changing to match map");
+    ChangeMatchState(MS_PRE_LIVE);
+    decl String:map[64];
+    GetNextMap(map, sizeof(map));
+    ForceChangeLevel(map, "Changing to match map");
 }
 
 /**
@@ -868,6 +878,33 @@ CheckAllReady()
 
     new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
     return (neededCount - playerCount);
+}
+
+/**
+ * Post match stuff
+ */
+PostMatch()
+{
+    ChangeMatchState(MS_POST_MATCH);
+    ServerCommand("tv_stoprecord");
+
+    // Set the nextmap to a warmup map
+    decl String:map[64];
+    GetArrayString(g_idleMapList, GetRandomInt(0, GetArraySize(g_idleMapList) - 1), map, sizeof(map));
+    SetNextMap(map);
+    PrintToChatAll("[GP] Switching to idle phase in 30 seconds...");
+    CreateTimer(30.0, Timer_IdleMap);
+}
+
+/**
+ * Changes to the idle phase
+ */
+public Action:Timer_IdleMap(Handle:timer)
+{
+    decl String:map[64];
+    GetNextMap(map, sizeof(map));
+    ChangeMatchState(MS_WARMUP);
+    ForceChangeLevel(map, "Changing to idle map");
 }
 
 /**
@@ -973,5 +1010,17 @@ public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontB
         }
     }
 
+    return Plugin_Continue;
+}
+
+/**
+ * Run at the conclusion of a match
+ */
+public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    if (g_matchState == MS_LIVE)
+    {
+        PostMatch();
+    }
     return Plugin_Continue;
 }
