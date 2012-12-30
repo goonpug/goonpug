@@ -736,21 +736,21 @@ StartLiveMatch()
 {
     ChangeMatchState(MS_LIVE);
     ServerCommand("exec esl5on5.cfg\n");
-    PrintCenterTextAll("Live on 3...");
+    PrintToChatAll("Live on 3...");
     ServerCommand("mp_restartgame 1\n");
-    CreateTimer(2.5, Timer_Lo3First);
+    CreateTimer(3.0, Timer_Lo3First);
 }
 
 public Action:Timer_Lo3First(Handle:timer)
 {
-    PrintCenterTextAll("Live on 2...");
+    PrintToChatAll("Live on 2...");
     ServerCommand("mp_restartgame 1\n");
-    CreateTimer(2.5, Timer_Lo3Second);
+    CreateTimer(3.0, Timer_Lo3Second);
 }
 
 public Action:Timer_Lo3Second(Handle:timer)
 {
-    PrintCenterTextAll("Live after next restart...");
+    PrintToChatAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
     CreateTimer(5.5, Timer_Lo3Third);
 }
