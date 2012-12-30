@@ -39,7 +39,7 @@ enum MatchState
 {
     MS_WARMUP = 0,
     MS_MAP_VOTE,
-    MS_NOMINATE_CAPTAINS,
+    MS_CAPTAINS_VOTE,
     MS_PICK_TEAMS,
     MS_PRE_LIVE,
     MS_LIVE,
@@ -57,14 +57,8 @@ new Handle:g_idleMapList = INVALID_HANDLE;
 // Global match information
 new MatchState:g_matchState = MS_WARMUP;
 new String:g_matchMap[64] = "";
-new Handle:g_matchInfoTimer = INVALID_HANDLE;
 
 // Global team choosing info
-new Handle:g_nominateTimer = INVALID_HANDLE;
-// Player specific nominations
-new g_playerNominations[MAXPLAYERS + 1][2];
-// Nomination count for each player
-new g_nominations[MAXPLAYERS + 1];
 new g_captains[2];
 new g_whosePick = -1;
 new g_ctCaptain;
@@ -107,7 +101,6 @@ public OnPluginStart()
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
-    RegConsoleCmd("sm_captain", Command_Captain, "Nominates a player to be a captain.");
 }
 
 public OnMapStart()
@@ -309,36 +302,7 @@ ChooseMatchMap()
     new Handle:menu = BuildMapVoteMenu();
     if (IsVoteInProgress())
         CancelVote();
-    VoteMenuToAll(menu, 15);
-}
-
-/**
- * A timer that prints instructions for captain nominations
- */
-public Action:Timer_NominateCaptains(Handle:timer)
-{
-    static count = 0;
-
-    if (count == 0)
-    {
-        PrintToChatAll("[GP] Now accepting nominations for team captains.");
-    }
-
-    count++;
-    if (count >= 4)
-    {
-        CloseHandle(g_nominateTimer);
-        g_nominateTimer = INVALID_HANDLE;
-
-        ChooseCaptains();
-        return Plugin_Stop;
-    }
-
-    PrintToChatAll("[GP] %d seconds remaining to nominate captains.", 60 - (count * 15));
-    PrintToChatAll("[GP] Use /captain [playername] to nominate a player.");
-    PrintToChatAll("[GP] You may nominate up to 2 captains");
-
-    return Plugin_Continue;
+    VoteMenuToAll(menu, 30);
 }
 
 /**
@@ -381,203 +345,137 @@ FindClientByName(const String:name[], bool:exact=false)
 }
 
 /**
- * Nominates a captain
+ * Returns a menu for a map vote
  */
-public Action:Command_Captain(client, args)
+Handle:BuildCaptainsVoteMenu()
 {
-    if (g_matchState != MS_NOMINATE_CAPTAINS)
+    new Handle:menu = CreateMenu(Menu_CaptainsVote);
+    SetMenuTitle(menu, "Vote for a team captain");
+    for (new i = 1; i <= MaxClients; i++)
     {
-        PrintToChat(client, "[GP] You can't nominate captains right now.");
-        return Plugin_Handled;
-    }
-
-    decl captain;
-    decl String:captainName[64];
-
-    if (GetCmdArgs() == 0)
-    {
-        captain = client;
-        GetClientName(captain, captainName, sizeof(captainName));
-    }
-    else
-    {
-        GetCmdArg(1, captainName, sizeof(captainName));
-        captain = FindClientByName(captainName);
-        if (captain < 0)
+        if (IsValidPlayer(i))
         {
-            PrintToChat(client, "[GP] No such player.");
-            return Plugin_Handled;
+            decl String:name[64];
+            GetClientName(i, name, sizeof(name));
+            AddMenuItem(menu, name, name);
         }
     }
+    SetMenuExitButton(menu, false);
+    SetVoteResultCallback(menu, VoteHandler_CaptainsVote);
 
-    if (captain == g_captains[0] || captain == g_captains[1])
-    {
-        PrintToChat(client, "[GP] Player is already a captain.");
-        return Plugin_Handled;
-    }
-
-    new nominateIndex = -1;
-    for (new i = 0; i < MAX_NOMINATIONS; i++)
-    {
-        if (nominateIndex == -1 && g_playerNominations[client][i] == 0)
-        {
-            nominateIndex = i;
-        }
-        else if (g_playerNominations[client][i] == client)
-        {
-            PrintToChat(client, "[GP] You already nominated that player.");
-            return Plugin_Handled;
-        }
-    }
-
-    if (nominateIndex != -1)
-    {
-        g_playerNominations[client][nominateIndex] = captain;
-        UpdateNominations(captain);
-        return Plugin_Continue;
-    }
-    else
-    {
-        PrintToChat(client, "[GP] You have already nominated the maximum number of captains.");
-    }
-
-    return Plugin_Handled;
+    return menu;
 }
 
 /**
- * Updates the nominated count for the specified player
+ * Handler for a map vote menu
  */
-UpdateNominations(client)
+public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 {
-    decl String:name[64];
-    GetClientName(client, name, sizeof(name));
-
-    g_nominations[client]++;
-
-    PrintToChatAll("[GP] %s now has %d captain votes.", name, g_nominations[client]);
-    new playerCount = GetConVarInt(g_cvar_maxPugPlayers);
-    if (g_nominations[client] >= (playerCount / 2))
+    if (action == MenuAction_End)
     {
-        SelectCaptain(client);
+        CloseHandle(menu);
     }
 }
 
 /**
- * Chooses captains based on nominations
+ * Handler for captain voting results
  *
- * This will be run if 2 players don't receive the required
- * votes within 60 seconds.
+ * TODO split this into multiple functions
  */
-ChooseCaptains()
+public VoteHandler_CaptainsVote(Handle:menu,
+                               numVotes,
+                               numClients,
+                               const clientInfo[][2],
+                               numItems,
+                               const itemInfo[][2])
 {
-    for (;;)
-    {
-        new Handle:tiedPlayers = CreateArray();
-        new maxVotes = 0;
+    new firstPlaceVotes = 0;
+    new secondPlaceVotes = -1;
+    new Handle:firstPlaceWinners = CreateArray();
+    new Handle:secondPlaceWinners = INVALID_HANDLE;
 
-        //Get a list of players tied for the max number of votes
-        for (new i = 1; i <= MaxClients; i++)
+    for (new i = 0; i < numItems; i++)
+    {
+        if (itemInfo[i][VOTEINFO_ITEM_VOTES] > firstPlaceVotes)
         {
-            if (g_captains[0] == i || g_captains[1] == i)
-                continue;
+            if (secondPlaceWinners != INVALID_HANDLE)
+            {
+                CloseHandle(secondPlaceWinners);
+            }
+            secondPlaceWinners = CloneArray(firstPlaceWinners);
+            secondPlaceVotes = firstPlaceVotes;
 
-            if (g_nominations[i] > maxVotes)
-            {
-                ClearArray(tiedPlayers);
-                maxVotes = g_nominations[i];
-                PushArrayCell(tiedPlayers, i);
-            }
-            else if (g_nominations[i] == maxVotes)
-            {
-                PushArrayCell(tiedPlayers, i);
-            }
+            firstPlaceVotes = itemInfo[i][VOTEINFO_ITEM_VOTES];
+            ClearArray(firstPlaceWinners);
+            PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
-
-        // Select a random player
-        new captain = GetArrayCell(tiedPlayers,
-                                   GetRandomInt(0, GetArraySize(tiedPlayers) - 1));
-        CloseHandle(tiedPlayers);
-        if (SelectCaptain(captain) == Plugin_Handled)
-            return;
+        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == firstPlaceVotes)
+        {
+            PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
+        }
+        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == secondPlaceVotes)
+        {
+            PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
+        }
     }
-}
 
-/**
- * Selects the specified player as a captain
- *
- * @retval Plugin_Continue if we should continue
- * @retval Plugin_Handled if all captains are selected
- */
-Action:SelectCaptain(client)
-{
-    assert(g_captains[0] == 0 || g_captains[1] == 0)
+    new firstPlaceTotal = GetArraySize(firstPlaceWinners);
+    assert(firstPlaceTotal > 0)
 
-    decl String:name[64];
-    GetClientName(client, name, sizeof(name));
+    new captainIndex[2];
 
-    PrintToChatAll("[GP] %s will be a captain.", name);
+    captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
 
-    if (g_captains[0] == 0)
+    if (firstPlaceTotal > 2)
     {
-        g_captains[0] = client;
-        return Plugin_Continue;
+        new rand1 = GetRandomInt(0, firstPlaceTotal - 1);
+        decl rand2;
+        do
+        {
+            rand2 = GetRandomInt(0, firstPlaceTotal - 1);
+        } while (rand2 == rand1);
+
+        captainIndex[0] = GetArrayCell(firstPlaceWinners, rand1);
+        captainIndex[1] = GetArrayCell(firstPlaceWinners, rand2);
+    }
+    else if (firstPlaceTotal == 2)
+    {
+        captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
     }
     else
     {
-        g_captains[1] = client;
-        ChooseTeams();
-        return Plugin_Handled;
+        assert(GetArraySize(secondPlaceWinners) > 0)
+        new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
+        captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
     }
-}
 
-/**
- * Reset all captain nomination globals;
- */
-ResetPlayerNominations()
-{
-    g_captains[0] = 0;
-    g_captains[1] = 0;
-
-    for (new i = 0; i <= MaxClients; i++)
+    for (new i = 0; i < 2; i++)
     {
-        g_nominations[i] = 0;
+        decl String:name[64];
+        GetMenuItem(menu, captainIndex[i], name, sizeof(name));
+        g_captains[i] = FindClientByName(name, true);
+        PrintToChatAll("[GP] %s will be a captain.", name);
+    }
 
-        for (new j = 0; j < MAX_NOMINATIONS; j++)
-        {
-            g_playerNominations[i][j] = 0;
-        }
+    CloseHandle(firstPlaceWinners);
+    if (secondPlaceWinners != INVALID_HANDLE)
+    {
+        CloseHandle(secondPlaceWinners);
     }
 }
 
 /**
  * Selects teams via captains
  */
-NominateCaptains()
+ChooseCaptains()
 {
-    ChangeMatchState(MS_NOMINATE_CAPTAINS);
-    ResetPlayerNominations();
-    g_nominateTimer = CreateTimer(15.0, Timer_NominateCaptains, _, TIMER_REPEAT);
-}
-
-/**
- * Starts a timer to update a box with match information
- */
-
-
-/**
- * Pick teams
- */
-ChooseTeams()
-{
-    ChangeMatchState(MS_PICK_TEAMS);
-    // Stop taking nominations
-    if (g_nominateTimer != INVALID_HANDLE)
-    {
-        CloseHandle(g_nominateTimer);
-        g_nominateTimer = INVALID_HANDLE;
-    }
-
-    ChooseFirstPick();
+    ChangeMatchState(MS_CAPTAINS_VOTE);
+    PrintToChatAll("[GP] Now voting for team captains.");
+    PrintToChatAll("[GP] Top two vote getters will be selected.");
+    new Handle:menu = BuildCaptainsVoteMenu();
+    if (IsVoteInProgress())
+        CancelVote();
+    VoteMenuToAll(menu, 30);
 }
 
 /**
@@ -788,12 +686,17 @@ StartMatchSetup()
 {
     ChooseMatchMap();
     StartMatchInfoText();
-    NominateCaptains();
+    ChangeMatchState(MS_PICK_TEAMS);
+    ChooseCaptains();
+    ChooseFirstPick();
 }
 
+/**
+ * Starts a timer to update a box with match information
+ */
 StartMatchInfoText()
 {
-    g_matchInfoTimer = CreateTimer(1.0, Timer_MatchInfo, _, TIMER_REPEAT);
+    CreateTimer(1.0, Timer_MatchInfo, _, TIMER_REPEAT);
 }
 
 /**
@@ -803,7 +706,7 @@ public Action:Timer_MatchInfo(Handle:timer)
 {
     switch (g_matchState)
     {
-        case MS_NOMINATE_CAPTAINS:
+        case MS_CAPTAINS_VOTE:
         {
             PrintHintTextToAll("Match Info:\nMap: %s",
                                g_matchMap);
@@ -890,6 +793,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         neededCount = CheckAllReady();
         if(neededCount == 0)
         {
+            CloseHandle(timer);
             OnAllReady();
             return Plugin_Stop;
         }
