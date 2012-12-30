@@ -70,7 +70,6 @@ new g_playerTeam[MAXPLAYERS + 1];
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
-new bool:g_readyUpChanged = false;
 
 /**
  * Public plugin info
@@ -264,6 +263,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
     {
         case MenuAction_End:
         {
+            CreateTimer(1.0, Timer_MapVoteEnd);
             CloseHandle(menu);
         }
         case MenuAction_VoteEnd:
@@ -291,6 +291,16 @@ SetMatchMap(const String:mapname[])
 {
     PrintToChatAll("[GP] Map will be: %s.", mapname);
     Format(g_matchMap, sizeof(g_matchMap), "%s", mapname);
+}
+
+/**
+ * Timer to call the next steps after map voting is done
+ */
+public Action:Timer_MapVoteEnd(Handle:timer)
+{
+    CloseHandle(timer);
+    StartMatchInfoText();
+    ChooseCaptains();
 }
 
 /**
@@ -373,8 +383,18 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 {
     if (action == MenuAction_End)
     {
+        CreateTimer(1.0, Timer_CaptainsVoteEnd);
         CloseHandle(menu);
     }
+}
+
+/**
+ * Calls the next step after voting for captains is done
+ */
+public Action:Timer_CaptainsVoteEnd(Handle:timer)
+{
+    CloseHandle(timer);
+    ChooseFirstPick();
 }
 
 /**
@@ -680,18 +700,6 @@ ForceAllSpec()
 }
 
 /**
- * Set up a the match
- */
-StartMatchSetup()
-{
-    ChooseMatchMap();
-    StartMatchInfoText();
-    ChangeMatchState(MS_PICK_TEAMS);
-    ChooseCaptains();
-    ChooseFirstPick();
-}
-
-/**
  * Starts a timer to update a box with match information
  */
 StartMatchInfoText()
@@ -744,7 +752,7 @@ OnAllReady()
     {
         case MS_WARMUP:
         {
-            StartMatchSetup();
+            ChooseMatchMap();
         }
         case MS_PRE_LIVE:
         {
@@ -787,16 +795,12 @@ public Action:Timer_ReadyUp(Handle:timer)
     static neededCount = -1;
 
     count++;
-    if (g_readyUpChanged || neededCount < 0)
+    neededCount = CheckAllReady();
+    if(neededCount == 0)
     {
-        g_readyUpChanged = false;
-        neededCount = CheckAllReady();
-        if(neededCount == 0)
-        {
-            CloseHandle(timer);
-            OnAllReady();
-            return Plugin_Stop;
-        }
+        CloseHandle(timer);
+        OnAllReady();
+        return Plugin_Stop;
     }
 
     if ((count % 10) == 0)
@@ -858,10 +862,6 @@ public Action:Command_Ready(client, args)
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
         PrintToChatAll("[GP] %s is now ready.", name);
-        if (g_readyUpChanged == false)
-        {
-            g_readyUpChanged = true;
-        }
     }
 
     return Plugin_Handled;
@@ -887,10 +887,6 @@ public Action:Command_Unready(client, args)
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = false;
         PrintToChatAll("[GP] %s is no longer ready.", name);
-        if (g_readyUpChanged == false)
-        {
-            g_readyUpChanged = true;
-        }
     }
 
     return Plugin_Handled;
