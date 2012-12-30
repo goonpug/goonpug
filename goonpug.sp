@@ -100,6 +100,9 @@ public OnPluginStart()
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
+
+    // Hook commands
+    AddCommandListener(Command_Jointeam, "jointeam");
 }
 
 public OnMapStart()
@@ -872,4 +875,28 @@ public Action:Command_Unready(client, args)
     }
 
     return Plugin_Handled;
+}
+
+/**
+ * Forces players to join a specific team if teams are locked
+ */
+public Action:Command_Jointeam(client, const String:command[], argc)
+{
+    if (!g_lockTeams || !IsValidPlayer(client))
+        return Plugin_Continue;
+
+    new String:param[16];
+    GetCmdArg(1, param, sizeof(param));
+    StripQuotes(param);
+    new team = StringToInt(param);
+
+    if (team == CS_TEAM_SPECTATOR)
+    {
+        return Plugin_Continue;
+    }
+    else
+    {
+        ChangeClientTeam(client, g_playerTeam[client]);
+        return Plugin_Handled;
+    }
 }
