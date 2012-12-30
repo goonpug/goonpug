@@ -895,7 +895,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         }
     }
 
-    if ((count % 30) == 0)
+    if ((count % 10) == 0)
     {
         for (new i = 1; i <= MaxClients; i++)
         {
@@ -904,6 +904,9 @@ public Action:Timer_ReadyUp(Handle:timer)
                 PrintHintText(i, "Use /ready to ready up.");
             }
         }
+    }
+    if ((count % 30) == 0)
+    {
         PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
     }
 
@@ -957,7 +960,7 @@ public Action:Command_Ready(client, args)
         }
     }
 
-    return Plugin_Continue;
+    return Plugin_Handled;
 }
 
 /**
@@ -986,5 +989,5 @@ public Action:Command_Unready(client, args)
         }
     }
 
-    return Plugin_Continue;
+    return Plugin_Handled;
 }
