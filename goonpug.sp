@@ -811,6 +811,7 @@ public Action:Timer_MatchMap(Handle:timer)
  */
 StartReadyUp()
 {
+    ServerCommand("exec tv_stoprecord\n");
     ServerCommand("exec goonpug_warmup.cfg\n");
     ResetReadyUp();
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
