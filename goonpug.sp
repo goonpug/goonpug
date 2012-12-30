@@ -76,6 +76,7 @@ new g_playerTeam[MAXPLAYERS + 1];
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
+new bool:g_readyUpChanged = false;
 
 /**
  * Public plugin info
@@ -112,6 +113,22 @@ public OnPluginStart()
 public OnMapStart()
 {
     ReadMapLists();
+    switch (g_matchState)
+    {
+        case MS_WARMUP:
+        {
+            StartWarmup();
+        }
+        case MS_PRE_LIVE:
+        {
+        }
+#if defined DEBUG
+        case default:
+        {
+            ThrowError("OnMapStart: Invalid match state!");
+        }
+#endif
+    }
 }
 
 public OnMapEnd()
@@ -308,7 +325,7 @@ public Action:Timer_NominateCaptains(Handle:timer)
     }
 
     count++;
-    if (count >= 6)
+    if (count >= 4)
     {
         CloseHandle(g_nominateTimer);
         g_nominateTimer = INVALID_HANDLE;
@@ -317,7 +334,7 @@ public Action:Timer_NominateCaptains(Handle:timer)
         return Plugin_Stop;
     }
 
-    PrintToChatAll("[GP] %d seconds remaining to nominate captains.", 60 - (count * 10));
+    PrintToChatAll("[GP] %d seconds remaining to nominate captains.", 60 - (count * 15));
     PrintToChatAll("[GP] Use /captain [playername] to nominate a player.");
     PrintToChatAll("[GP] You may nominate up to 2 captains");
 
@@ -417,6 +434,7 @@ public Action:Command_Captain(client, args)
     {
         g_playerNominations[client][nominateIndex] = captain;
         UpdateNominations(captain);
+        return Plugin_Continue;
     }
     else
     {
@@ -538,7 +556,7 @@ NominateCaptains()
 {
     ChangeMatchState(MS_NOMINATE_CAPTAINS);
     ResetPlayerNominations();
-    g_nominateTimer = CreateTimer(10.0, Timer_NominateCaptains, _, TIMER_REPEAT);
+    g_nominateTimer = CreateTimer(15.0, Timer_NominateCaptains, _, TIMER_REPEAT);
 }
 
 /**
@@ -839,43 +857,72 @@ OnAllReady()
 }
 
 /**
+ * Starts the warmup/idle stage
+ */
+StartWarmup()
+{
+    StartReadyUpState();
+}
+
+/**
+ * Starts a ready up stage
+ *
+ * TODO: kick a player if not ready after a certain amount of time
+ */
+StartReadyUpState()
+{
+    ResetReadyUp();
+    CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
+}
+
+/**
+ * Checks the ready up status periodically
+ */
+public Action:Timer_ReadyUp(Handle:timer)
+{
+    static count = 0;
+    static neededCount = -1;
+
+    count++;
+    if (g_readyUpChanged || neededCount < 0)
+    {
+        g_readyUpChanged = false;
+        neededCount = CheckAllReady();
+        if(neededCount == 0)
+        {
+            OnAllReady();
+            return Plugin_Stop;
+        }
+    }
+
+    if ((count % 30) == 0)
+    {
+        PrintToChatAll("[GP] Use /ready or /unready to set your ready up state.");
+        PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
+    }
+
+    return Plugin_Continue;
+}
+
+/**
  * Check if all players are readied up
  *
- * @retval true if all are ready
- * @retval false if all are not ready
+ * @return Number of players needed to ready up
  */
 CheckAllReady()
 {
     new playerCount = 0;
-    new bool:allReady = true;
 
     for (new i = 1; i < MaxClients; i++)
     {
         if (IsValidPlayer(i))
         {
             playerCount++;
-            if (!g_playerReady[i])
-            {
-                allReady = false;
-            }
         }
     }
 
-    if (allReady)
-    {
-        // Make sure we have enough players
-        new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
-
-        if (playerCount < neededCount)
-        {
-            allReady = false;
-        }
-
-        PrintToChatAll("[GP] Still waiting on %d players to join...",
-                       neededCount - playerCount);
-    }
-
-    return allReady;
+    new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
+    return (neededCount - playerCount);
 }
 
 /**
@@ -886,7 +933,6 @@ public Action:Command_Ready(client, args)
     if (!NeedReadyUp())
     {
         PrintToChat(client, "[GP] You don't need to ready up right now.");
-        return Plugin_Handled;
     }
 
     if (g_playerReady[client])
@@ -899,14 +945,13 @@ public Action:Command_Ready(client, args)
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
         PrintToChatAll("[GP] %s is now ready.", name);
-
-        if (CheckAllReady())
+        if (g_readyUpChanged == false)
         {
-            OnAllReady();
+            g_readyUpChanged = true;
         }
     }
 
-    return Plugin_Handled;
+    return Plugin_Continue;
 }
 
 /**
@@ -917,7 +962,6 @@ public Action:Command_Unready(client, args)
     if (!NeedReadyUp())
     {
         PrintToChat(client, "[GP] You don't need to ready up right now.");
-        return Plugin_Handled;
     }
 
     if (!g_playerReady[client])
@@ -930,10 +974,11 @@ public Action:Command_Unready(client, args)
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = false;
         PrintToChatAll("[GP] %s is no longer ready.", name);
-
-        // Call this check to print the waiting for count
-        CheckAllReady();
+        if (g_readyUpChanged == false)
+        {
+            g_readyUpChanged = true;
+        }
     }
 
-    return Plugin_Handled;
+    return Plugin_Continue;
 }
