@@ -732,6 +732,8 @@ public Action:Timer_MatchInfo(Handle:timer)
 StartLiveMatch()
 {
     ServerCommand("tv_stoprecord\n");
+    ChangeCvar("sm_replenlite_refill", "0");
+    ChangeCvar("sm_replenlite_restock", "0");
     new time = GetTime();
     decl String:timestamp[128];
     FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
@@ -813,6 +815,8 @@ StartReadyUp()
 {
     ServerCommand("exec tv_stoprecord\n");
     ServerCommand("exec goonpug_warmup.cfg\n");
+    ChangeCvar("sm_replenlite_refill", "0");
+    ChangeCvar("sm_replenlite_restock", "1");
     ResetReadyUp();
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
 }
