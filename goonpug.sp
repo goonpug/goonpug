@@ -105,6 +105,7 @@ public OnPluginStart()
     // Hook events
     HookEvent("cs_intermission", Event_CsIntermission);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
+    HookEvent("player_death", Event_PlayerDeath);
 }
 
 public OnMapStart()
@@ -206,9 +207,6 @@ ChangeCvar(const String:name[], const String:value[])
  */
 ResetReadyUp()
 {
-    ChangeCvar("mp_freezetime", "3");
-    ChangeCvar("mp_buytime", "999");
-
     for (new i = 0; i <= MaxClients; i++)
     {
         g_playerReady[i] = false;
@@ -812,6 +810,7 @@ public Action:Timer_MatchMap(Handle:timer)
  */
 StartReadyUpState()
 {
+    ServerCommand("exec goonpug_warmup.cfg\n");
     ResetReadyUp();
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
 }
@@ -1023,4 +1022,29 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
         PostMatch();
     }
     return Plugin_Continue;
+}
+
+/**
+ * If we are in a ready up phase just respawn everyone constantly
+ */
+public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    if (NeedReadyUp())
+    {
+        new userid = GetEventInt(event, "userid");
+        new client = GetClientOfUserId(userid);
+        CreateTimer(2.5, Timer_RespawnPlayer, client);
+    }
+    return Plugin_Continue;
+}
+
+/**
+ * Respawns the specified player
+ */
+public Action:Timer_RespawnPlayer(Handle:timer, any:client)
+{
+    if (IsValidPlayer(client) && !IsPlayerAlive(client))
+    {
+        CS_RespawnPlayer(client);
+    }
 }
