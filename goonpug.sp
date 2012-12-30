@@ -895,11 +895,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         }
     }
 
-    if ((count % 30) == 0)
-    {
-        PrintToChatAll("[GP] Use /ready or /unready to set your ready up state.");
-        PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
-    }
+    PrintHintTextToAll("[GP] Use /ready or /unready to set your ready up state.\n[GP] Still need %d players to ready up...", neededCount);
 
     return Plugin_Continue;
 }
