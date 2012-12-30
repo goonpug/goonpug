@@ -103,6 +103,9 @@ public OnPluginStart()
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
+
+    // Hook events
+    HookEvent("cs_intermission", Event_CsIntermission);
 }
 
 public OnMapStart()
@@ -899,4 +902,27 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         ChangeClientTeam(client, g_playerTeam[client]);
         return Plugin_Handled;
     }
+}
+
+/**
+ * Updates our locked teams at halftime
+ */
+public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    if (g_lockTeams)
+    {
+        for (new i = 1; i <= MAXPLAYERS; i++)
+        {
+            if (g_playerTeam[i] == CS_TEAM_CT)
+            {
+                g_playerTeam[i] = CS_TEAM_T;
+            }
+            else if (g_playerTeam[i] == CS_TEAM_T)
+            {
+                g_playerTeam[i] = CS_TEAM_CT;
+            }
+        }
+    }
+
+    return Plugin_Continue;
 }
