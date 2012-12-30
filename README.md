@@ -28,12 +28,14 @@ After all players have readied up, the following steps will occur:
 Commands
 ========
 /ready - ready up
+
 /unready - un-ready up
 
 
 Admin Commands
 ==============
 /lo3 - Force a lo3 and start a match on the current map
+
 /warmup - Force a warmup/idle phase on the current map
 
 
