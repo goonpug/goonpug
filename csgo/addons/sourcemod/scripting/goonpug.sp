@@ -154,13 +154,13 @@ public OnMapEnd()
 ReadMapLists()
 {
     new serial = -1;
-    g_pugMapList = ReadMapList(INVALID_HANDLE, serial, "pug_match");
+    g_pugMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_match");
     if (g_pugMapList == INVALID_HANDLE)
-        ThrowError("Could not read find pug_match maplist");
+        ThrowError("Could not read find goonpug_match maplist");
 
-    g_idleMapList = ReadMapList(INVALID_HANDLE, serial, "pug_idle");
+    g_idleMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_idle");
     if (g_idleMapList == INVALID_HANDLE)
-        ThrowError("Could not find pug_idle maplist");
+        ThrowError("Could not find goonpug_idle maplist");
 }
 
 /**
