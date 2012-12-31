@@ -4,7 +4,7 @@
  * Author: astroman <peter@pmrowla.com>
  */
 
-//#define DEBUG
+#define DEBUG 1
 
 #if defined DEBUG
     #define assert(%1) if (!(%1)) ThrowError("Debug Assertion Failed");
@@ -415,8 +415,12 @@ public VoteHandler_CaptainsVote(Handle:menu,
     {
         if (itemInfo[i][VOTEINFO_ITEM_VOTES] > firstPlaceVotes)
         {
-            if (firstPlaceVotes > 0)
+            // The votes for itemInfo[i] should be the new first place total
+
+            // If firstPlaceVotes == 0 then don't set second place yet
+            if (firstPlaceVotes != 0)
             {
+                // Second place should be the old first place
                 if (secondPlaceWinners != INVALID_HANDLE)
                 {
                     CloseHandle(secondPlaceWinners);
@@ -431,15 +435,32 @@ public VoteHandler_CaptainsVote(Handle:menu,
         }
         else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == firstPlaceVotes)
         {
+            // This item is in a tie with the current first place
             PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
+        }
+        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes && firstPlaceVotes != 0)
+        {
+            // Second place should be the old first place
+            if (secondPlaceWinners != INVALID_HANDLE)
+            {
+                secondPlaceWinners = CreateArray();
+            }
+            ClearArray(secondPlaceWinners);
+            PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
         else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == secondPlaceVotes)
         {
+            // This item is in a tie with the current second place
             PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
     }
 
     new firstPlaceTotal = GetArraySize(firstPlaceWinners);
+    new secondPlaceTotal = 0;
+    if (secondPlaceWinners != INVALID_HANDLE)
+    {
+        secondPlaceTotal = GetArraySize(secondPlaceWinners);
+    }
     assert(firstPlaceTotal > 0)
 
     new captainIndex[2];
@@ -448,7 +469,6 @@ public VoteHandler_CaptainsVote(Handle:menu,
 
     if (firstPlaceTotal > 2)
     {
-        PrintToChatAll("[GP] There was a tie for first place, will select 2 random captains.");
         new rand1 = GetRandomInt(0, firstPlaceTotal - 1);
         decl rand2;
         do
@@ -464,19 +484,20 @@ public VoteHandler_CaptainsVote(Handle:menu,
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
     }
-    else if (GetArraySize(secondPlaceWinners) > 0)
+    else if (secondPlaceTotal > 0)
     {
-        PrintToChatAll("[GP] There was tie for second place, will select a random second captain.");
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
         captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
     }
-    else {
-        PrintToChatAll("[GP] There were no second place votes");
+    else
+    {
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-        do {
-            captainIndex[1] = GetRandomInt(1, MaxClients - 1);
-        } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]) != -1));
+        do
+        {
+            new rand = GetRandomInt(0, numItems - 1);
+            captainIndex[1] = itemInfo[rand][VOTEINFO_ITEM_INDEX];
+        } while (captainIndex[0] != captainIndex[1]);
 
     }
 
@@ -485,6 +506,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
         decl String:name[64];
         GetMenuItem(menu, captainIndex[i], name, sizeof(name));
         g_captains[i] = FindClientByName(name, true);
+        assert(g_captains[i] > 0)
         PrintToChatAll("[GP] %s will be a captain.", name);
     }
 
@@ -516,6 +538,9 @@ ChooseCaptains()
  */
 ChooseFirstPick()
 {
+    assert(g_captains[0] > 0)
+    assert(g_captains[1] > 0)
+
     g_whosePick = GetRandomInt(0, 1);
     decl String:name[64];
     GetClientName(g_captains[g_whosePick], name, sizeof(name));
