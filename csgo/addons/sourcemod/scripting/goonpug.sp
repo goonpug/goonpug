@@ -565,11 +565,11 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             decl String:name[64];
             GetClientName(param1, name, sizeof(name));
             PrintToChatAll("[GP] %s will take %s side first.", name, info);
-            PickTeams();
         }
         case MenuAction_End:
         {
             CloseHandle(menu);
+            PickTeams();
         }
     }
 }
@@ -607,6 +607,7 @@ PickTeams()
 public Action:Timer_PickTeams(Handle:timer)
 {
     static Handle:pickMenu = INVALID_HANDLE;
+    static counter = 0;
 
     // If invalid we can start the next pick.
     if (pickMenu != INVALID_HANDLE)
@@ -634,12 +635,18 @@ public Action:Timer_PickTeams(Handle:timer)
     }
     else
     {
-        decl String:captainName[64];
-        GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
-        PrintToChatAll("[GP] %s's pick...", captainName);
         pickMenu = BuildPickMenu();
         DisplayMenu(pickMenu, g_captains[g_whosePick], 0);
     }
+
+    if (counter % 15 == 0)
+    {
+        decl String:captainName[64];
+        GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
+        PrintCenterTextAll("[GP] %s's pick...", captainName);
+    }
+    counter++;
+
     return Plugin_Continue;
 }
 
