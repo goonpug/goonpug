@@ -4,7 +4,7 @@
  * Author: astroman <peter@pmrowla.com>
  */
 
-#define DEBUG 1
+//#define DEBUG 1
 
 #if defined DEBUG
     #define assert(%1) if (!(%1)) ThrowError("Debug Assertion Failed");
@@ -21,7 +21,7 @@
 #include <sdktools>
 #include <sdktools_functions>
 
-#define GOONPUG_VERSION "0.0.2"
+#define GOONPUG_VERSION "0.0.3"
 
 #if defined MAXPLAYERS
 #undef MAXPLAYERS
@@ -64,6 +64,7 @@ new g_captains[2];
 new g_whosePick = -1;
 new g_ctCaptain = 0;
 new g_tCaptain = 0;
+new Handle:g_teamPickMenu = INVALID_HANDLE;
 
 // Team Management globals
 new bool:g_lockTeams = false;
@@ -441,7 +442,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
         else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes && firstPlaceVotes != 0)
         {
             // Second place should be the old first place
-            if (secondPlaceWinners != INVALID_HANDLE)
+            if (secondPlaceWinners == INVALID_HANDLE)
             {
                 secondPlaceWinners = CreateArray();
             }
@@ -648,6 +649,11 @@ PickTeams()
     ForceAllSpec();
     ForcePlayerTeam(g_ctCaptain, CS_TEAM_CT);
     ForcePlayerTeam(g_tCaptain, CS_TEAM_T);
+    if (g_teamPickMenu != INVALID_HANDLE)
+    {
+        CloseHandle(g_teamPickMenu);
+        g_teamPickMenu = INVALID_HANDLE;
+    }
     CreateTimer(1.0, Timer_PickTeams, _, TIMER_REPEAT);
 }
 
@@ -656,11 +662,10 @@ PickTeams()
  */
 public Action:Timer_PickTeams(Handle:timer)
 {
-    static Handle:pickMenu = INVALID_HANDLE;
     static counter = 0;
 
     // If invalid we can start the next pick.
-    if (pickMenu != INVALID_HANDLE)
+    if (g_teamPickMenu != INVALID_HANDLE)
         return Plugin_Continue;
 
     new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
@@ -685,8 +690,8 @@ public Action:Timer_PickTeams(Handle:timer)
     }
     else
     {
-        pickMenu = BuildPickMenu();
-        DisplayMenu(pickMenu, g_captains[g_whosePick], 0);
+        g_teamPickMenu = BuildPickMenu();
+        DisplayMenu(g_teamPickMenu, g_captains[g_whosePick], 0);
     }
 
     if (counter % 15 == 0)
@@ -754,7 +759,7 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_End:
         {
             CloseHandle(menu);
-            menu = INVALID_HANDLE;
+            g_teamPickMenu = INVALID_HANDLE;
         }
     }
 }
