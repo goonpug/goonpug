@@ -133,7 +133,7 @@ public OnMapStart()
             StartReadyUp();
         }
 #if defined DEBUG
-        case default:
+        default:
         {
             ThrowError("OnMapStart: Invalid match state!");
         }
@@ -246,7 +246,7 @@ bool:NeedReadyUp()
  */
 Handle:BuildMapVoteMenu()
 {
-    assert(mapList != INVALID_HANDLE)
+    assert(g_pugMapList != INVALID_HANDLE)
 
     new Handle:menu = CreateMenu(Menu_MapVote);
     SetMenuTitle(menu, "Vote for the map to play");
@@ -410,12 +410,15 @@ public VoteHandler_CaptainsVote(Handle:menu,
     {
         if (itemInfo[i][VOTEINFO_ITEM_VOTES] > firstPlaceVotes)
         {
-            if (secondPlaceWinners != INVALID_HANDLE)
+            if (firstPlaceVotes > 0)
             {
-                CloseHandle(secondPlaceWinners);
+                if (secondPlaceWinners != INVALID_HANDLE)
+                {
+                    CloseHandle(secondPlaceWinners);
+                }
+                secondPlaceWinners = CloneArray(firstPlaceWinners);
+                secondPlaceVotes = firstPlaceVotes;
             }
-            secondPlaceWinners = CloneArray(firstPlaceWinners);
-            secondPlaceVotes = firstPlaceVotes;
 
             firstPlaceVotes = itemInfo[i][VOTEINFO_ITEM_VOTES];
             ClearArray(firstPlaceWinners);
@@ -440,6 +443,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
 
     if (firstPlaceTotal > 2)
     {
+        PrintToChatAll("[GP] There was a tie for first place, will select 2 random captains.");
         new rand1 = GetRandomInt(0, firstPlaceTotal - 1);
         decl rand2;
         do
@@ -457,16 +461,18 @@ public VoteHandler_CaptainsVote(Handle:menu,
     }
     else if (GetArraySize(secondPlaceWinners) > 0)
     {
+        PrintToChatAll("[GP] There was tie for second place, will select a random second captain.");
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
         captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
     }
-    else
-    {
+    else {
+        PrintToChatAll("[GP] There were no second place votes");
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         do {
             captainIndex[1] = GetRandomInt(1, MaxClients - 1);
         } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]) != -1));
+
     }
 
     for (new i = 0; i < 2; i++)
@@ -547,7 +553,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
                 }
                 else
                 {
-                    g_ctCaptain = g_captains[1];
+                    g_tCaptain = g_captains[0];
                 }
             }
             else
@@ -559,7 +565,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
                 }
                 else
                 {
-                    g_tCaptain = g_captains[1];
+                    g_ctCaptain = g_captains[0];
                 }
             }
             decl String:name[64];
@@ -697,7 +703,7 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
             new pick = FindClientByName(pickName, true);
             decl String:captainName[64];
             GetClientName(param1, captainName, sizeof(captainName));
-            PrintToChatAll("[GP] %s picks %s.");
+            PrintToChatAll("[GP] %s picks %s.", captainName, pickName);
             ForcePlayerTeam(pick, GetClientTeam(param1));
             g_whosePick ^= 1;
         }
@@ -720,6 +726,7 @@ ForcePlayerTeam(client, team)
     if (IsValidPlayer(client))
     {
         ChangeClientTeam(client, team);
+        CreateTimer(0.5, Timer_RespawnPlayer);
     }
 }
 
@@ -849,7 +856,7 @@ OnAllReady()
             StartLiveMatch();
         }
 #if defined DEBUG
-        case default:
+        default:
         {
             ThrowError("OnAllReady: Invalid match state!");
         }
