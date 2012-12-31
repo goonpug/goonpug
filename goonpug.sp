@@ -486,7 +486,7 @@ ChooseFirstPick()
     g_whosePick = GetRandomInt(0, 1);
     decl String:name[64];
     GetClientName(g_captains[g_whosePick], name, sizeof(name));
-    PrintToChatAll("[GP] %s will pick first.");
+    PrintToChatAll("[GP] %s will pick first.", name);
 
     new Handle:menu = BuildSideMenu();
     DisplayMenu(menu, g_captains[g_whosePick ^ 1], 0);
@@ -578,7 +578,6 @@ public Action:Timer_PickTeams(Handle:timer)
 
     if (GetTeamClientCount(CS_TEAM_CT) + GetTeamClientCount(CS_TEAM_T) == neededCount)
     {
-        CloseHandle(timer);
         PrintToChatAll("[GP] Done picking teams.");
 
         decl String:curmap[64];
@@ -719,6 +718,11 @@ public Action:Timer_MatchInfo(Handle:timer)
             PrintHintTextToAll("Match Info:\nMap: %s\n%s (CT) vs %s (T)",
                                g_matchMap, ctName, tName);
         }
+        default:
+        {
+            // State was changed somewhere else
+            return Plugin_Stop;
+        }
     }
 
     return Plugin_Continue;
@@ -732,8 +736,6 @@ public Action:Timer_MatchInfo(Handle:timer)
 StartLiveMatch()
 {
     ServerCommand("tv_stoprecord\n");
-    ChangeCvar("sm_replenlite_refill", "0");
-    ChangeCvar("sm_replenlite_restock", "0");
     new time = GetTime();
     decl String:timestamp[128];
     FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
@@ -815,8 +817,6 @@ StartReadyUp()
 {
     ServerCommand("exec tv_stoprecord\n");
     ServerCommand("exec goonpug_warmup.cfg\n");
-    ChangeCvar("sm_replenlite_refill", "0");
-    ChangeCvar("sm_replenlite_restock", "1");
     ResetReadyUp();
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
 }
@@ -833,7 +833,6 @@ public Action:Timer_ReadyUp(Handle:timer)
     // This can happen if an admin forces a lo3
     if (!NeedReadyUp())
     {
-        CloseHandle(timer);
         return Plugin_Stop;
     }
 
@@ -841,7 +840,6 @@ public Action:Timer_ReadyUp(Handle:timer)
     neededCount = CheckAllReady();
     if(neededCount == 0)
     {
-        CloseHandle(timer);
         OnAllReady();
         return Plugin_Stop;
     }
