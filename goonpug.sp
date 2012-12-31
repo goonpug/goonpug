@@ -48,7 +48,8 @@ enum MatchState
 };
 
 // Global convar handles
-new Handle:g_cvar_maxPugPlayers;
+new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
+new Handle:g_cvar_tvEnabled = INVALID_HANDLE;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -93,6 +94,7 @@ public OnPluginStart()
     g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
                                     "Maximum players allowed in a PUG",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_tvEnabled = FindConVar("tv_enabled");
 
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
@@ -107,6 +109,16 @@ public OnPluginStart()
     HookEvent("cs_intermission", Event_CsIntermission);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
+}
+
+bool:IsTvEnabled()
+{
+    if (g_cvar_tvEnabled == INVALID_HANDLE)
+    {
+        return false;
+    }
+
+    return GetConVarBool(g_cvar_tvEnabled);
 }
 
 public OnMapStart()
@@ -728,6 +740,28 @@ public Action:Timer_MatchInfo(Handle:timer)
     return Plugin_Continue;
 }
 
+StartServerDemo()
+{
+    if (IsTvEnabled())
+    {
+        ServerCommand("tv_stoprecord\n");
+        new time = GetTime();
+        decl String:timestamp[128];
+        FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
+        decl String:map[64];
+        GetCurrentMap(map, sizeof(map));
+        ServerCommand("tv_record %s_%s\n", timestamp, map);
+    }
+}
+
+StopServerDemo()
+{
+    if (IsTvEnabled())
+    {
+        ServerCommand("exec tv_stoprecord\n");
+    }
+}
+
 /**
  * Start the match
  *
@@ -735,14 +769,7 @@ public Action:Timer_MatchInfo(Handle:timer)
  */
 StartLiveMatch()
 {
-    ServerCommand("tv_stoprecord\n");
-    new time = GetTime();
-    decl String:timestamp[128];
-    FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
-    decl String:map[64];
-    GetCurrentMap(map, sizeof(map));
-
-    ServerCommand("tv_record %s_%s\n", timestamp, map);
+    StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
     PrintToChatAll("Live on 3...");
@@ -815,7 +842,7 @@ public Action:Timer_MatchMap(Handle:timer)
  */
 StartReadyUp()
 {
-    ServerCommand("exec tv_stoprecord\n");
+    StopServerDemo();
     ServerCommand("exec goonpug_warmup.cfg\n");
     ResetReadyUp();
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
@@ -888,15 +915,15 @@ CheckAllReady()
  */
 PostMatch()
 {
+    StopServerDemo();
     ChangeMatchState(MS_POST_MATCH);
-    ServerCommand("tv_stoprecord");
 
     // Set the nextmap to a warmup map
     decl String:map[64];
     GetArrayString(g_idleMapList, GetRandomInt(0, GetArraySize(g_idleMapList) - 1), map, sizeof(map));
     SetNextMap(map);
-    PrintToChatAll("[GP] Switching to idle phase in 30 seconds...");
-    CreateTimer(30.0, Timer_IdleMap);
+    PrintToChatAll("[GP] Switching to idle phase in 20 seconds...");
+    CreateTimer(20.0, Timer_IdleMap);
 }
 
 /**
