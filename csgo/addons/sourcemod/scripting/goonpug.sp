@@ -62,8 +62,8 @@ new String:g_matchMap[64] = "";
 // Global team choosing info
 new g_captains[2];
 new g_whosePick = -1;
-new g_ctCaptain;
-new g_tCaptain;
+new g_ctCaptain = 0;
+new g_tCaptain = 0;
 
 // Team Management globals
 new bool:g_lockTeams = false;
@@ -452,15 +452,18 @@ public VoteHandler_CaptainsVote(Handle:menu,
     }
     else if (firstPlaceTotal == 2)
     {
+        captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
     }
     else if (GetArraySize(secondPlaceWinners) > 0)
     {
+        captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
         captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
     }
     else
     {
+        captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         do {
             captainIndex[1] = GetRandomInt(1, MaxClients - 1);
         } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]) != -1));
@@ -538,10 +541,26 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             if (StrEqual(info, "CT"))
             {
                 g_ctCaptain = param1;
+                if (g_captains[0] == g_ctCaptain)
+                {
+                    g_tCaptain = g_captains[1];
+                }
+                else
+                {
+                    g_ctCaptain = g_captains[1];
+                }
             }
             else
             {
                 g_tCaptain = param1;
+                if (g_captains[0] == g_tCaptain)
+                {
+                    g_ctCaptain = g_captains[1];
+                }
+                else
+                {
+                    g_tCaptain = g_captains[1];
+                }
             }
             decl String:name[64];
             GetClientName(param1, name, sizeof(name));
