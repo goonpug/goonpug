@@ -454,11 +454,16 @@ public VoteHandler_CaptainsVote(Handle:menu,
     {
         captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
     }
-    else
+    else if (GetArraySize(secondPlaceWinners) > 0)
     {
-        assert(GetArraySize(secondPlaceWinners) > 0)
         new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
         captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
+    }
+    else
+    {
+        do {
+            captainIndex[1] = GetRandomInt(1, MaxClients - 1);
+        } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]);
     }
 
     for (new i = 0; i < 2; i++)
@@ -612,7 +617,7 @@ public Action:Timer_PickTeams(Handle:timer)
     {
         decl String:captainName[64];
         GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
-        PrintToChatAll("[GP] %s's pick...");
+        PrintToChatAll("[GP] %s's pick...", captainName);
         pickMenu = BuildPickMenu();
         DisplayMenu(pickMenu, g_captains[g_whosePick], 0);
     }
