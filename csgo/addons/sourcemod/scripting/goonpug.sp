@@ -900,7 +900,7 @@ CheckAllReady()
 
     for (new i = 1; i < MaxClients; i++)
     {
-        if (IsValidPlayer(i))
+        if (IsValidPlayer(i) && g_playerReady[i])
         {
             playerCount++;
         }
