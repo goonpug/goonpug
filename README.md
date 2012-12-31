@@ -99,3 +99,9 @@ Notes
 
 Server demos will automatically be recorded for matches started by the plugin
 or /lo3 if GOTV is running on the server.
+
+License
+=======
+GoonPUG is released under the MIT license. See
+[LICENSE.md](https://github.com/pmrowla/goonpug/blob/master/LICENSE.md) for
+more information.
