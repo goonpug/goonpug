@@ -128,7 +128,12 @@ public OnMapStart()
     ReadMapLists();
     switch (g_matchState)
     {
-        case MS_WARMUP, MS_PRE_LIVE:
+        case MS_WARMUP:
+        {
+            UnlockAndClearTeams();
+            StartReadyUp();
+        }
+        case MS_PRE_LIVE:
         {
             StartReadyUp();
         }
@@ -595,6 +600,20 @@ LockAndClearTeams()
 }
 
 /**
+ * Unlock team status for all players
+ */
+UnlockAndClearTeams()
+{
+    g_lockTeams = false;
+
+    // Reset player teams
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        g_playerTeam[i] = CS_TEAM_NONE;
+    }
+}
+
+/**
  * Actual picking of teams
  */
 PickTeams()
@@ -982,6 +1001,7 @@ public Action:Timer_IdleMap(Handle:timer)
  */
 public Action:Command_Warmup(client, args)
 {
+    UnlockAndClearTeams();
     ChangeMatchState(MS_WARMUP);
     StartReadyUp();
     return Plugin_Handled;
