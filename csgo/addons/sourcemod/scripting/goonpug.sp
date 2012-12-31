@@ -21,7 +21,7 @@
 #include <sdktools>
 #include <sdktools_functions>
 
-#define GOONPUG_VERSION "0.0.1"
+#define GOONPUG_VERSION "0.0.2"
 
 #if defined MAXPLAYERS
 #undef MAXPLAYERS
