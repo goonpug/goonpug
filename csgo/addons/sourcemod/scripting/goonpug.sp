@@ -96,6 +96,8 @@ public OnPluginStart()
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_tvEnabled = FindConVar("tv_enabled");
 
+    AutoExecConfig(true, "goonpug.cfg");
+
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
