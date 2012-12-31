@@ -463,7 +463,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
     {
         do {
             captainIndex[1] = GetRandomInt(1, MaxClients - 1);
-        } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]);
+        } while (!IsValidPlayer(captainIndex[1]) && (FindValueInArray(firstPlaceWinners, captainIndex[1]) != -1));
     }
 
     for (new i = 0; i < 2; i++)
