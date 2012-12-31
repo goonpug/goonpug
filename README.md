@@ -81,18 +81,18 @@ Commands
 User Commands
 -------------
 
-/ready \(sm_ready\) - ready up
+`/ready` \(`sm_ready`\) - ready up
 
-/unready \(sm_unready\) - un-ready up
+`/unready` \(`sm_unready`\) - un-ready up
 
 Admin Commands
 --------------
 
-/lo3 \(sm_lo3\) - Force a lo3 and start a match on the current map. *Requires
+`/lo3` \(`sm_lo3`\) - Force a lo3 and start a match on the current map. *Requires
 the SM ADMIN_CHANGEMAP privilege.*
 
-/warmup \(sm_warmup\) - Force a warmup/idle phase on the current map. *Requires
-the SM_ADMIN_CHANGEMAP privelege.*
+`/warmup` \(`sm_warmup`\) - Force a warmup/idle phase on the current map. *Requires
+the SM ADMIN_CHANGEMAP privilege.*
 
 Notes
 =====
