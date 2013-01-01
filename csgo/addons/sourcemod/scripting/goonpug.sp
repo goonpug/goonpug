@@ -1101,7 +1101,7 @@ public Action:Command_Unready(client, args)
  */
 public Action:Command_Jointeam(client, const String:command[], argc)
 {
-    if (!g_lockTeams || !IsValidPlayer(client))
+    if (!IsValidPlayer(client))
         return Plugin_Continue;
 
     new String:param[16];
@@ -1115,8 +1115,20 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     }
     else
     {
-        ChangeClientTeam(client, g_playerTeam[client]);
-        return Plugin_Handled;
+        if (NeedReadyUp())
+        {
+            CreateTimer(0.5, Timer_RespawnPlayer, client);
+        }
+
+        if (g_lockTeams)
+        {
+            ChangeClientTeam(client, g_playerTeam[client]);
+            return Plugin_Handled;
+        }
+        else
+        {
+            return Plugin_Continue;
+        }
     }
 }
 
