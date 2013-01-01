@@ -49,6 +49,7 @@ enum MatchState
 
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
+new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnabled = INVALID_HANDLE;
 
 // Global menu handles
@@ -94,6 +95,9 @@ public OnPluginStart()
                  FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
     g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
                                     "Maximum players allowed in a PUG",
+                                    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
+                                    "Use deathmatch respawning during warmup rounds",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_tvEnabled = FindConVar("tv_enabled");
 
@@ -1195,7 +1199,8 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
  */
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    if (NeedReadyUp())
+    new dm = GetConVarInt(g_cvar_idleDeathmatch);
+    if (NeedReadyUp() && dm != 0)
     {
         new userid = GetEventInt(event, "userid");
         new client = GetClientOfUserId(userid);
