@@ -974,6 +974,29 @@ public Action:Timer_ReadyUp(Handle:timer)
     {
         PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
     }
+    if ((count % 60) == 0)
+    {
+        PrintToChatAll("[GP] The following players are still not ready:");
+        decl String:msg[192];
+        Format(msg, sizeof(msg), "[GP] ");
+        for (new i = 1; i <= MaxClients; i++)
+        {
+            if (IsValidPlayer(i) && !g_playerReady[i])
+            {
+                decl String:name[64];
+                GetClientName(i, name, sizeof(name));
+                new len = strlen(name);
+                if ((len + strlen(msg)) > (sizeof(msg) - 1))
+                {
+                    PrintToChatAll(msg);
+                    Format(msg, sizeof(msg), "[GP] ");
+                }
+                StrCat(msg, sizeof(msg), name);
+                StrCat(msg, sizeof(msg), " ");
+            }
+        }
+        PrintToChatAll(msg);
+    }
 
     return Plugin_Continue;
 }
