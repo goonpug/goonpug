@@ -23,15 +23,6 @@
 
 #define GOONPUG_VERSION "0.0.3"
 
-#if defined MAXPLAYERS
-#undef MAXPLAYERS
-#endif
-
-#define MAXPLAYERS 64
-
-// Max captain nominations
-#define MAX_NOMINATIONS 2
-
 /**
  * Match states
  */
@@ -91,7 +82,7 @@ public Plugin:myinfo = {
 public OnPluginStart()
 {
     // Set up GoonPUG convars
-    CreateConVar("sm_gp_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
+    CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
                  FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
     g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
                                     "Maximum players allowed in a PUG",
@@ -219,12 +210,6 @@ bool:IsValidPlayer(client)
 ChangeMatchState(MatchState:newState)
 {
     g_matchState = newState;
-}
-
-ChangeCvar(const String:name[], const String:value[])
-{
-    new Handle:cvar = FindConVar(name);
-    SetConVarString(cvar, value);
 }
 
 /**
