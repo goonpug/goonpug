@@ -1,3 +1,4 @@
+/* (c) Copyright 2013 Peter Rowlands */
 /**
  * Goon competitive PUG plugin
  *
