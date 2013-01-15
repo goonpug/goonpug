@@ -706,7 +706,8 @@ Handle:BuildPickMenu()
 
     for (i = 1; i <= MaxClients; i++)
     {
-        if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR)
+        if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR
+            && g_playerReady[i])
         {
             PushArrayCell(pickable, i);
         }
