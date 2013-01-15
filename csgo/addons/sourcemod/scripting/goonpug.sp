@@ -190,16 +190,9 @@ bool:IsValidPlayer(client)
 {
     if (client > 0 && client <= MaxClients && IsClientConnected(client) && IsClientInGame(client))
     {
-        if (IsFakeClient(client))
+        if (IsFakeClient(client) && IsClientSourceTV(client))
         {
-            // client is a bot
-            decl String:name[64];
-            GetClientName(client, name, sizeof(name));
-            if (StrEqual(name, "GOTV"))
-            {
-                // All bots that aren't GOTV should count as players
                 return false;
-            }
         }
         return true;
     }
@@ -283,8 +276,12 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         }
         case MenuAction_VoteEnd:
         {
-            new String:mapname[64];
+            decl winningVotes, totalVotes;
+            decl String:mapname[64];
+            GetMenuVoteInfo(param2, winningVotes, totalVotes);
             GetMenuItem(menu, param1, mapname, sizeof(mapname));
+            PrintToChatAll("[GP] %s won with %0.f%% of the vote.",
+                mapname, winningVotes / totalVotes);
             SetMatchMap(mapname);
         }
         case MenuAction_VoteCancel:
@@ -295,7 +292,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                 decl String:mapname[64];
                 GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
                                mapname, sizeof(mapname));
-                PrintToChatAll("[GP] No votes received, using random map.");
+                PrintToChatAll("[GP] No votes received, using random map: %s.", mapname);
                 SetMatchMap(mapname);
             }
         }
@@ -307,7 +304,6 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
  */
 SetMatchMap(const String:mapname[])
 {
-    PrintToChatAll("[GP] Map will be: %s.", mapname);
     Format(g_matchMap, sizeof(g_matchMap), "%s", mapname);
 }
 
@@ -392,7 +388,10 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
     if (action == MenuAction_End)
     {
         CloseHandle(menu);
-        ChooseFirstPick();
+        if (param1 != MenuEnd_Cancelled)
+        {
+            ChooseFirstPick();
+        }
     }
 }
 
@@ -543,6 +542,9 @@ ChooseFirstPick()
     assert(g_captains[0] > 0)
     assert(g_captains[1] > 0)
 
+    if (g_matchState != MS_CAPTAINS_VOTE)
+        return;
+
     g_whosePick = GetRandomInt(0, 1);
     decl String:name[64];
     GetClientName(g_captains[g_whosePick], name, sizeof(name));
@@ -607,7 +609,10 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_End:
         {
             CloseHandle(menu);
-            PickTeams();
+            if (param1 != MenuEnd_Cancelled)
+            {
+                PickTeams();
+            }
         }
     }
 }
@@ -645,6 +650,9 @@ UnlockAndClearTeams()
  */
 PickTeams()
 {
+    if (g_matchState != MS_CAPTAINS_VOTE)
+        return;
+
     ChangeMatchState(MS_PICK_TEAMS);
     LockAndClearTeams();
     ForceAllSpec();
@@ -810,7 +818,7 @@ StartMatchInfoText()
 }
 
 /**
- * Prints a continually updated hinttext box with info about an upcoming match
+ * Prints a continually updated center text box with info about an upcoming
  */
 public Action:Timer_MatchInfo(Handle:timer)
 {
@@ -818,7 +826,7 @@ public Action:Timer_MatchInfo(Handle:timer)
     {
         case MS_CAPTAINS_VOTE:
         {
-            PrintHintTextToAll("Match Info:\nMap: %s",
+            PrintCenterTextAll("Match Info:\nMap: %s",
                                g_matchMap);
         }
         case MS_PICK_TEAMS:
@@ -827,7 +835,7 @@ public Action:Timer_MatchInfo(Handle:timer)
             decl String:tName[64];
             GetClientName(g_ctCaptain, ctName, sizeof(ctName));
             GetClientName(g_tCaptain, tName, sizeof(tName));
-            PrintHintTextToAll("Match Info:\nMap: %s\n%s (CT) vs %s (T)",
+            PrintCenterTextAll("Match Info:\nMap: %s\n%s (CT) vs %s (T)",
                                g_matchMap, ctName, tName);
         }
         default:
@@ -872,7 +880,7 @@ StartLiveMatch()
     StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
-    PrintCenterTextAll("Live on 3...");
+    PrintToChatAll("Live on 3...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3First);
 }
@@ -882,7 +890,7 @@ public Action:Timer_Lo3First(Handle:timer)
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
 
-    PrintCenterTextAll("Live on 2...");
+    PrintToChatAll("Live on 2...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3Second);
     return Plugin_Stop;
@@ -893,7 +901,7 @@ public Action:Timer_Lo3Second(Handle:timer)
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
 
-    PrintCenterTextAll("Live after next restart...");
+    PrintToChatAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
     CreateTimer(5.5, Timer_Lo3Third);
     return Plugin_Stop;
@@ -905,7 +913,7 @@ public Action:Timer_Lo3Third(Handle:timer)
         return Plugin_Stop;
 
     ChangeMatchState(MS_LIVE);
-    PrintCenterTextAll("LIVE! LIVE! LIVE!");
+    PrintToChatAll("LIVE! LIVE! LIVE!");
     return Plugin_Stop;
 }
 
@@ -941,10 +949,15 @@ OnAllReady()
  */
 public Action:Timer_MatchMap(Handle:timer)
 {
+    if (g_matchState != MS_PICK_TEAMS)
+        return Plugin_Stop;
+
     ChangeMatchState(MS_PRE_LIVE);
     decl String:map[64];
     GetNextMap(map, sizeof(map));
     ForceChangeLevel(map, "Changing to match map");
+
+    return Plugin_Stop;
 }
 
 /**
@@ -992,7 +1005,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         {
             if (IsValidPlayer(i) && !g_playerReady[i])
             {
-                PrintHintText(i, "Use /ready to ready up.");
+                PrintCenterText(i, "Use /ready to ready up.");
             }
         }
     }
