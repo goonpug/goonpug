@@ -108,6 +108,7 @@ public OnPluginStart()
     HookEvent("cs_intermission", Event_CsIntermission);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
+    HookEvent("player_disconnect", Event_PlayerDisconnect);
 }
 
 bool:IsTvEnabled()
@@ -270,8 +271,15 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_End:
         {
             CloseHandle(menu);
-            StartMatchInfoText();
-            ChooseCaptains();
+            if (param1 == MenuEnd_VotingCancelled && param2 != VoteCancel_NoVotes)
+            {
+                RestartWarmup();
+            }
+            else
+            {
+                StartMatchInfoText();
+                ChooseCaptains();
+            }
         }
         case MenuAction_VoteEnd:
         {
@@ -281,12 +289,15 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         }
         case MenuAction_VoteCancel:
         {
-            new len = GetArraySize(g_pugMapList);
-            decl String:mapname[64];
-            GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
-                           mapname, sizeof(mapname));
-            PrintToChatAll("[GP] Vote cancelled, using random map.");
-            SetMatchMap(mapname);
+            if (param1 == VoteCancel_NoVotes)
+            {
+                new len = GetArraySize(g_pugMapList);
+                decl String:mapname[64];
+                GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
+                               mapname, sizeof(mapname));
+                PrintToChatAll("[GP] No votes received, using random map.");
+                SetMatchMap(mapname);
+            }
         }
     }
 }
@@ -654,6 +665,10 @@ public Action:Timer_PickTeams(Handle:timer)
 {
     static counter = 0;
 
+    // If state was reset abort
+    if (g_matchState != MS_PICK_TEAMS)
+        return Plugin_Stop;
+
     // If invalid we can start the next pick.
     if (g_teamPickMenu != INVALID_HANDLE)
         return Plugin_Continue;
@@ -762,6 +777,11 @@ ForcePlayerTeam(client, team)
 {
     assert(g_lockTeams == true)
 
+    if (team == CS_TEAM_NONE)
+    {
+        team = CS_TEAM_SPECTATOR;
+    }
+
     g_playerTeam[client] = team;
     if (IsValidPlayer(client))
     {
@@ -852,29 +872,41 @@ StartLiveMatch()
     StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
-    PrintToChatAll("Live on 3...");
+    PrintCenterTextAll("Live on 3...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3First);
 }
 
 public Action:Timer_Lo3First(Handle:timer)
 {
-    PrintToChatAll("Live on 2...");
+    if (g_matchState != MS_LO3)
+        return Plugin_Stop;
+
+    PrintCenterTextAll("Live on 2...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3Second);
+    return Plugin_Stop;
 }
 
 public Action:Timer_Lo3Second(Handle:timer)
 {
-    PrintToChatAll("Live after next restart...");
+    if (g_matchState != MS_LO3)
+        return Plugin_Stop;
+
+    PrintCenterTextAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
     CreateTimer(5.5, Timer_Lo3Third);
+    return Plugin_Stop;
 }
 
 public Action:Timer_Lo3Third(Handle:timer)
 {
+    if (g_matchState != MS_LO3)
+        return Plugin_Stop;
+
     ChangeMatchState(MS_LIVE);
-    PrintCenterTextAll("Match is live!");
+    PrintCenterTextAll("LIVE! LIVE! LIVE!");
+    return Plugin_Stop;
 }
 
 /**
@@ -920,11 +952,14 @@ public Action:Timer_MatchMap(Handle:timer)
  *
  * TODO: kick a player if not ready after a certain amount of time
  */
-StartReadyUp()
+StartReadyUp(bool:reset=true)
 {
     StopServerDemo();
     ServerCommand("exec goonpug_warmup.cfg\n");
-    ResetReadyUp();
+    if (reset)
+    {
+        ResetReadyUp();
+    }
     CreateTimer(1.0, Timer_ReadyUp, _, TIMER_REPEAT);
 }
 
@@ -1041,13 +1076,21 @@ public Action:Timer_IdleMap(Handle:timer)
 }
 
 /**
+ * Restart the warmup stage
+ */
+RestartWarmup(bool:reset=true)
+{
+    UnlockAndClearTeams();
+    ChangeMatchState(MS_WARMUP);
+    StartReadyUp(reset);
+}
+
+/**
  * Forces the start of a warmup stage
  */
 public Action:Command_Warmup(client, args)
 {
-    UnlockAndClearTeams();
-    ChangeMatchState(MS_WARMUP);
-    StartReadyUp();
+    RestartWarmup();
     return Plugin_Handled;
 }
 
@@ -1204,5 +1247,69 @@ public Action:Timer_RespawnPlayer(Handle:timer, any:client)
     if (IsValidPlayer(client) && !IsPlayerAlive(client))
     {
         CS_RespawnPlayer(client);
+    }
+}
+
+/**
+ * Handle player disconnections
+ */
+public Action:Event_PlayerDisconnect(
+    Handle:event,
+    const String:name[],
+    bool:dontBroadcast)
+{
+    new userid = GetEventInt(event, "userid");
+    new client = GetClientOfUserId(userid);
+
+    switch (g_matchState)
+    {
+        case MS_MAP_VOTE, MS_CAPTAINS_VOTE, MS_PICK_TEAMS:
+        {
+            /*
+             * if a readied player drops in these states, just go back to
+             * warmup and start over
+             */
+            if (g_playerReady[client])
+            {
+                PrintToChatAll("[GP]: Lost player, restarting warmup.");
+                if (IsVoteInProgress())
+                    CancelVote();
+                RestartWarmup();
+                g_playerReady[client] = false;
+            }
+        }
+        case MS_PRE_LIVE, MS_LO3:
+        {
+            /*
+             * If the player was involved in the match, start a reconnect grace
+             * timer. After which, hold a vote to forfeit, play man down, or
+             * allow any replacement player from spec to fill in.
+             */
+            g_playerReady[client] = false;
+            if (g_playerTeam[client] == CS_TEAM_CT
+                || g_playerTeam[client] == CS_TEAM_T)
+            {
+                PrintToChatAll("[GP]: Lost match player, restarting warmup.");
+                //ChangeMatchState(MS_PRE_LIVE);
+                //StartReadyUp(false);
+            }
+        }
+        case MS_LIVE:
+        {
+            /*
+             * Start a reconnect grace timer. After which, hold a vote to
+             * forfeit, play man down, or allow any replacement player from
+             * spec to fill in.
+             */
+            if (g_playerTeam[client] == CS_TEAM_CT
+                || g_playerTeam[client] == CS_TEAM_T)
+            {
+                PrintToChatAll("[GP]: Lost match player.");
+            }
+        }
+        default:
+        {
+            g_playerReady[client] = false;
+        }
     }
 }
