@@ -103,6 +103,9 @@ public OnPluginStart()
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
+    AddCommandListener(Command_Say, "say");
+    AddCommandListener(Command_Say, "say2");
+    AddCommandListener(Command_Say, "say_team");
 
     // Hook events
     HookEvent("cs_intermission", Event_CsIntermission);
@@ -1164,6 +1167,24 @@ public Action:Command_Unready(client, args)
     }
 
     return Plugin_Handled;
+}
+
+/**
+ * Hooks the say command
+ */
+public Action:Command_Say(client, const String:command[], argc)
+{
+    new String:param[32];
+    GetCmdArg(1, param, sizeof(param));
+    StripQuotes(param);
+    if (StrEqual(param, ".ready"))
+    {
+        return Command_Ready(client, 0);
+    }
+    else
+    {
+        return Plugin_Continue;
+    }
 }
 
 /**
