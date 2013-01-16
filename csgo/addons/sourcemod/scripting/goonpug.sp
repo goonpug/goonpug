@@ -1002,7 +1002,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         return Plugin_Stop;
     }
 
-    if ((count % 10) == 0)
+    if ((count % 5) == 0)
     {
         for (new i = 1; i <= MaxClients; i++)
         {
