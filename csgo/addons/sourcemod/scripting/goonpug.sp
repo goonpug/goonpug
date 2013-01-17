@@ -60,8 +60,10 @@ new g_tCaptain = 0;
 new Handle:g_teamPickMenu = INVALID_HANDLE;
 
 // Team Management globals
+#define MAX_STEAM_ID_LEN 32
 new bool:g_lockTeams = false;
-new g_playerTeam[MAXPLAYERS + 1];
+new Handle:g_playerTeamTrie = INVALID_HANDLE;
+new Handle:g_playerTeamKeys = INVALID_HANDLE;
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
@@ -625,18 +627,34 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
     }
 }
 
+ClearTeams()
+{
+    if (g_playerTeamTrie == INVALID_HANDLE)
+    {
+        g_playerTeamTrie = CreateTrie();
+    }
+    else
+    {
+        ClearTrie(g_playerTeamTrie);
+    }
+
+    if (g_playerTeamKeys == INVALID_HANDLE)
+    {
+        g_playerTeamKeys = CreateArray(MAX_STEAM_ID_LEN);
+    }
+    else
+    {
+        ClearArray(g_playerTeamKeys);
+    }
+}
+
 /**
  * Lock team status for all players
  */
 LockAndClearTeams()
 {
     g_lockTeams = true;
-
-    // Reset player teams
-    for (new i = 1; i <= MaxClients; i++)
-    {
-        g_playerTeam[i] = CS_TEAM_NONE;
-    }
+    ClearTeams();
 }
 
 /**
@@ -645,12 +663,7 @@ LockAndClearTeams()
 UnlockAndClearTeams()
 {
     g_lockTeams = false;
-
-    // Reset player teams
-    for (new i = 1; i <= MaxClients; i++)
-    {
-        g_playerTeam[i] = CS_TEAM_NONE;
-    }
+    ClearTeams();
 }
 
 /**
@@ -793,16 +806,22 @@ ForcePlayerTeam(client, team)
 {
     assert(g_lockTeams == true)
 
-    if (team == CS_TEAM_NONE)
-    {
-        team = CS_TEAM_SPECTATOR;
-    }
-
-    g_playerTeam[client] = team;
     if (IsValidPlayer(client))
     {
+        if (team == CS_TEAM_NONE)
+        {
+            team = CS_TEAM_SPECTATOR;
+        }
+
+        decl String:steamId[MAX_STEAM_ID_LEN];
+        GetClientAuthString(client, steamId, sizeof(steamId));
+        SetTrieValue(g_playerTeamTrie, steamId, team, true);
+        new index = FindStringInArray(g_playerTeamKeys, steamId);
+        if (index < 0)
+        {
+            PushArrayString(g_playerTeamKeys, steamId);
+        }
         ChangeClientTeam(client, team);
-        CreateTimer(0.5, Timer_RespawnPlayer);
     }
 }
 
@@ -817,7 +836,7 @@ ForceAllSpec()
     }
 }
 
-/**
+    /**
  * Starts a timer to update a box with match information
  */
 StartMatchInfoText()
@@ -1215,7 +1234,17 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     {
         if (g_lockTeams)
         {
-            ChangeClientTeam(client, g_playerTeam[client]);
+            decl String:steamId[MAX_STEAM_ID_LEN];
+            GetClientAuthString(client, steamId, sizeof(steamId));
+
+            if (GetTrieValue(g_playerTeamTrie, steamId, team))
+            {
+                ChangeClientTeam(client, team);
+            }
+            else
+            {
+                ForcePlayerTeam(client, CS_TEAM_SPECTATOR);
+            }
             return Plugin_Handled;
         }
         else
@@ -1232,15 +1261,22 @@ public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontB
 {
     if (g_lockTeams)
     {
-        for (new i = 1; i <= MAXPLAYERS; i++)
+        for (new i = 0; i <= GetArraySize(g_playerTeamKeys); i++)
         {
-            if (g_playerTeam[i] == CS_TEAM_CT)
+            decl String:steamId[32];
+            GetArrayString(g_playerTeamKeys, i, steamId, sizeof(steamId));
+
+            decl team;
+            if (GetTrieValue(g_playerTeamTrie, steamId, team))
             {
-                g_playerTeam[i] = CS_TEAM_T;
-            }
-            else if (g_playerTeam[i] == CS_TEAM_T)
-            {
-                g_playerTeam[i] = CS_TEAM_CT;
+                if (team == CS_TEAM_CT)
+                {
+                    SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_T, true);
+                }
+                else if (team == CS_TEAM_T)
+                {
+                    SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_CT, true);
+                }
             }
         }
     }
@@ -1296,6 +1332,13 @@ public Action:Event_PlayerDisconnect(
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
+    decl String:steamId[MAX_STEAM_ID_LEN];
+    GetClientAuthString(client, steamId, sizeof(steamId));
+    decl String:playerName[64];
+    GetClientName(client, playerName, sizeof(playerName));
+
+    decl team;
+    new bool:hasTeam = GetTrieValue(g_playerTeamTrie, steamId, team);
 
     switch (g_matchState)
     {
@@ -1322,10 +1365,9 @@ public Action:Event_PlayerDisconnect(
              * allow any replacement player from spec to fill in.
              */
             g_playerReady[client] = false;
-            if (g_playerTeam[client] == CS_TEAM_CT
-                || g_playerTeam[client] == CS_TEAM_T)
+            if (hasTeam && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
-                PrintToChatAll("[GP]: Lost match player, restarting warmup.");
+                PrintToChatAll("[GP]: Lost match player: %s", playerName);
                 //ChangeMatchState(MS_PRE_LIVE);
                 //StartReadyUp(false);
             }
@@ -1337,10 +1379,9 @@ public Action:Event_PlayerDisconnect(
              * forfeit, play man down, or allow any replacement player from
              * spec to fill in.
              */
-            if (g_playerTeam[client] == CS_TEAM_CT
-                || g_playerTeam[client] == CS_TEAM_T)
+            if (hasTeam && (team == CS_TEAM_CT || CS_TEAM_T))
             {
-                PrintToChatAll("[GP]: Lost match player.");
+                PrintToChatAll("[GP]: Lost match player: %s", playerName);
             }
         }
         default:
