@@ -1206,11 +1206,6 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     }
     else
     {
-        if (NeedReadyUp())
-        {
-            CreateTimer(0.5, Timer_RespawnPlayer, client);
-        }
-
         if (g_lockTeams)
         {
             ChangeClientTeam(client, g_playerTeam[client]);
