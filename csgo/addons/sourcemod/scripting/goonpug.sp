@@ -284,7 +284,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             GetMenuVoteInfo(param2, winningVotes, totalVotes);
             GetMenuItem(menu, param1, mapname, sizeof(mapname));
             PrintToChatAll("[GP] %s won with %0.f%% of the vote.",
-                mapname, winningVotes / totalVotes);
+                mapname, (winningVotes / totalVotes) * 100);
             SetMatchMap(mapname);
         }
         case MenuAction_VoteCancel:
@@ -916,7 +916,7 @@ public Action:Timer_Lo3Third(Handle:timer)
         return Plugin_Stop;
 
     ChangeMatchState(MS_LIVE);
-    PrintToChatAll("LIVE! LIVE! LIVE!");
+    PrintCenterTextAll("LIVE! LIVE! LIVE!");
     return Plugin_Stop;
 }
 
@@ -1076,8 +1076,8 @@ PostMatch()
     decl String:map[64];
     GetArrayString(g_idleMapList, GetRandomInt(0, GetArraySize(g_idleMapList) - 1), map, sizeof(map));
     SetNextMap(map);
-    PrintToChatAll("[GP] Switching to idle phase in 20 seconds...");
-    CreateTimer(20.0, Timer_IdleMap);
+    PrintToChatAll("[GP] Switching to idle phase in 15 seconds...");
+    CreateTimer(15.0, Timer_IdleMap);
 }
 
 /**
