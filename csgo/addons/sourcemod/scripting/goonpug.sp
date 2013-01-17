@@ -298,7 +298,8 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                 decl String:mapname[64];
                 GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
                                mapname, sizeof(mapname));
-                PrintToChatAll("[GP] No votes received, using random map: %s.", mapname);
+                PrintToChatAll("[GP] No votes received, using random map: %s.",
+                               mapname);
                 SetMatchMap(mapname);
             }
         }
@@ -445,7 +446,8 @@ public VoteHandler_CaptainsVote(Handle:menu,
             // This item is in a tie with the current first place
             PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
-        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes && firstPlaceVotes != 0)
+        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes
+                 && firstPlaceVotes != 0)
         {
             // Second place should be the old first place
             if (secondPlaceWinners == INVALID_HANDLE)
