@@ -91,7 +91,7 @@ public OnPluginStart()
     g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
                                     "Use deathmatch respawning during warmup rounds",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
-    g_cvar_tvEnabled = FindConVar("tv_enabled");
+    g_cvar_tvEnabled = FindConVar("tv_enable");
 
     AutoExecConfig(true, "goonpug");
 
@@ -869,7 +869,7 @@ StopServerDemo()
 {
     if (IsTvEnabled())
     {
-        ServerCommand("exec tv_stoprecord\n");
+        ServerCommand("tv_stoprecord\n");
     }
 }
 
