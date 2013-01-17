@@ -191,7 +191,10 @@ CloseMapLists()
  */
 bool:IsValidPlayer(client)
 {
-    if (client > 0 && client <= MaxClients && IsClientConnected(client) && IsClientInGame(client))
+    if (client > 0 && client <= MaxClients
+        && IsClientConnected(client)
+        && IsClientInGame(client)
+        && GetClientTeam(client) != CS_TEAM_NONE)
     {
         if (IsFakeClient(client) && IsClientSourceTV(client))
         {
@@ -1002,16 +1005,14 @@ public Action:Timer_ReadyUp(Handle:timer)
         return Plugin_Stop;
     }
 
-    if ((count % 5) == 0)
+    for (new i = 1; i <= MaxClients; i++)
     {
-        for (new i = 1; i <= MaxClients; i++)
+        if (IsValidPlayer(i) && !g_playerReady[i])
         {
-            if (IsValidPlayer(i) && !g_playerReady[i])
-            {
-                PrintCenterText(i, "Use /ready to ready up.");
-            }
+            PrintCenterText(i, "Use /ready to ready up.");
         }
     }
+
     if ((count % 30) == 0)
     {
         PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
@@ -1133,12 +1134,16 @@ public Action:Command_Ready(client, args)
     {
         PrintToChat(client, "[GP] You are already ready.");
     }
-    else
+    else if (CheckAllReady() > 0)
     {
         decl String:name[64];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
         PrintToChatAll("[GP] %s is now ready.", name);
+    }
+    else
+    {
+        PrintToChat(client, "[GP] Maximum number of players already readied up.");
     }
 
     return Plugin_Handled;
