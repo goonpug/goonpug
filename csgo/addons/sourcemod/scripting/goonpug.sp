@@ -44,7 +44,7 @@ enum MatchState
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
-new Handle:g_cvar_tvEnabled = INVALID_HANDLE;
+new Handle:g_cvar_tvEnable = INVALID_HANDLE;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -99,7 +99,7 @@ public OnPluginStart()
     g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
                                     "Use deathmatch respawning during warmup rounds",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
-    g_cvar_tvEnabled = FindConVar("tv_enable");
+    g_cvar_tvEnable = FindConVar("tv_enable");
 
     AutoExecConfig(true, "goonpug");
 
@@ -160,12 +160,12 @@ public OnClientAuthorized(client, const String:auth[])
 
 bool:IsTvEnabled()
 {
-    if (g_cvar_tvEnabled == INVALID_HANDLE)
+    if (g_cvar_tvEnable == INVALID_HANDLE)
     {
         return false;
     }
 
-    return GetConVarBool(g_cvar_tvEnabled);
+    return GetConVarBool(g_cvar_tvEnable);
 }
 
 public OnMapStart()
