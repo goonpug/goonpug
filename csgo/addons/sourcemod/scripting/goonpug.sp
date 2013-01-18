@@ -955,7 +955,7 @@ public Action:Timer_Lo3Second(Handle:timer)
 
     PrintToChatAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
-    CreateTimer(5.5, Timer_Lo3Third);
+    CreateTimer(6.0, Timer_Lo3Third);
     return Plugin_Stop;
 }
 
@@ -1262,9 +1262,10 @@ public Action:Command_Jointeam(client, const String:command[], argc)
             decl String:steamId[MAX_STEAM_ID_LEN];
             GetClientAuthString(client, steamId, sizeof(steamId));
 
-            if (GetTrieValue(g_playerTeamTrie, steamId, team))
+            decl newTeam;
+            if (GetTrieValue(g_playerTeamTrie, steamId, newTeam))
             {
-                ChangeClientTeam(client, team);
+                ChangeClientTeam(client, newTeam);
             }
             else
             {
