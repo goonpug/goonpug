@@ -116,6 +116,16 @@ public OnPluginStart()
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 }
 
+public OnClientAuthorized(client, const String:auth[])
+{
+    if (!IsFakeClient(client))
+    {
+        decl String:playerName[64];
+        GetClientName(client, playerName, sizeof(playerName));
+        PrintToChatAll("\x01\x0b\x04%s (%s) connected", playerName, auth);
+    }
+}
+
 bool:IsTvEnabled()
 {
     if (g_cvar_tvEnabled == INVALID_HANDLE)
@@ -1436,7 +1446,7 @@ public Action:Event_PlayerDisconnect(
     decl String:reason[64];
     GetEventString(event, "reason", reason, sizeof(reason));
 
-    PrintToChatAll("[GP]: %s (%s) disconnected: %s", playerName, steamId, reason);
+    PrintToChatAll("\x01\x0b\x04%s (%s) disconnected: %s", playerName, steamId, reason);
 
     switch (g_matchState)
     {
@@ -1450,7 +1460,7 @@ public Action:Event_PlayerDisconnect(
             {
                 if (StrEqual(reason, "Disconnect by user"))
                 {
-                    PrintToChatAll("[GP]: %s (%s) will receive a 30 minute ban for leaving after readying up.",
+                    PrintToChatAll("\x01\x0b\x02[GP]: %s (%s) will receive a 30 minute ban for leaving after readying up.",
                                    playerName, steamId);
                     BanClient(client, 30, BANFLAG_AUTHID, "Abandoned match after readying up.");
                 }
