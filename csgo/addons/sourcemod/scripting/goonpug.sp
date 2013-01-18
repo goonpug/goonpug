@@ -1429,13 +1429,14 @@ public Action:Event_PlayerDisconnect(
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
-    decl String:steamId[MAX_STEAM_ID_LEN];
+    decl String:steamId[STEAMID_LEN];
     GetClientAuthString(client, steamId, sizeof(steamId));
     decl String:playerName[64];
     GetClientName(client, playerName, sizeof(playerName));
+    decl String:reason[64];
+    GetEventString(event, "reason", reason, sizeof(reason));
 
-    decl team;
-    new bool:hasTeam = GetTrieValue(g_playerTeamTrie, steamId, team);
+    PrintToChatAll("[GP]: %s (%s) disconnected: %s", playerName, steamId, reason);
 
     switch (g_matchState)
     {
@@ -1447,7 +1448,13 @@ public Action:Event_PlayerDisconnect(
              */
             if (g_playerReady[client])
             {
-                PrintToChatAll("[GP]: Lost player, restarting warmup.");
+                if (StrEqual(reason, "Disconnect by user"))
+                {
+                    PrintToChatAll("[GP]: %s (%s) will receive a 30 minute ban for leaving after readying up.",
+                                   playerName, steamId);
+                    BanClient(client, 30, BANFLAG_AUTHID, "Abandoned match after readying up.");
+                }
+                PrintToChatAll("[GP]: Restarting warmup...");
                 if (IsVoteInProgress())
                     CancelVote();
                 RestartWarmup();
@@ -1465,8 +1472,6 @@ public Action:Event_PlayerDisconnect(
             if (FindStringInArray(g_ctPlayers, steamId) >= 0
                 || FindStringInArray(g_tPlayers, steamId) >= 0)
             {
-                PrintToChatAll("[GP]: %s (%s) disconnected",
-                               playerName, steamId);
                 //TODO implement this
             }
         }
@@ -1480,8 +1485,6 @@ public Action:Event_PlayerDisconnect(
             if (FindStringInArray(g_ctPlayers, steamId) >= 0
                 || FindStringInArray(g_tPlayers, steamId) >= 0)
             {
-                PrintToChatAll("[GP]: %s (%s) disconnected",
-                               playerName, steamId);
                 //TODO implement this
             }
         }
