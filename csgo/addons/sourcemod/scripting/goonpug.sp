@@ -1439,6 +1439,12 @@ public Action:Event_PlayerDisconnect(
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
+
+    if (IsFakeClient(client))
+    {
+        return Plugin_Continue;
+    }
+
     decl String:steamId[STEAMID_LEN];
     GetClientAuthString(client, steamId, sizeof(steamId));
     decl String:playerName[64];
@@ -1503,4 +1509,6 @@ public Action:Event_PlayerDisconnect(
             g_playerReady[client] = false;
         }
     }
+
+    return Plugin_Continue;
 }
