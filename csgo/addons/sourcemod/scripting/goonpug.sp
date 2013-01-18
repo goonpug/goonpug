@@ -323,9 +323,21 @@ ChooseMatchMap()
 {
     ChangeMatchState(MS_MAP_VOTE);
     new Handle:menu = BuildMapVoteMenu();
+    new clientCount = 0;
+    new clients[MAXPLAYERS + 1];
+
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (g_playerReady[i])
+        {
+            clients[clientCount] = i;
+            clientCount++;
+        }
+    }
+
     if (IsVoteInProgress())
         CancelVote();
-    VoteMenuToAll(menu, 30);
+    VoteMenu(menu, clients, clientCount, 30);
 }
 
 /**
@@ -376,13 +388,14 @@ Handle:BuildCaptainsVoteMenu()
     SetMenuTitle(menu, "Vote for a team captain");
     for (new i = 1; i <= MaxClients; i++)
     {
-        if (IsValidPlayer(i))
+        if (IsValidPlayer(i) && g_playerReady[i])
         {
             decl String:name[64];
             GetClientName(i, name, sizeof(name));
             AddMenuItem(menu, name, name);
         }
     }
+
     SetMenuExitButton(menu, false);
     SetVoteResultCallback(menu, VoteHandler_CaptainsVote);
 
@@ -537,9 +550,21 @@ ChooseCaptains()
     PrintToChatAll("[GP] Now voting for team captains.");
     PrintToChatAll("[GP] Top two vote getters will be selected.");
     new Handle:menu = BuildCaptainsVoteMenu();
+    new clientCount = 0;
+    new clients[MAXPLAYERS + 1];
+
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (g_playerReady[i])
+        {
+            clients[clientCount] = i;
+            clientCount++;
+        }
+    }
+
     if (IsVoteInProgress())
         CancelVote();
-    VoteMenuToAll(menu, 30);
+    VoteMenu(menu, clients, clientCount, 30);
 }
 
 /**
