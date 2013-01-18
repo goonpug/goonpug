@@ -205,8 +205,7 @@ bool:IsValidPlayer(client)
 {
     if (client > 0 && client <= MaxClients
         && IsClientConnected(client)
-        && IsClientInGame(client)
-        && GetClientTeam(client) != CS_TEAM_NONE)
+        && IsClientInGame(client))
     {
         if (IsFakeClient(client) && IsClientSourceTV(client))
         {
@@ -1440,7 +1439,7 @@ public Action:Event_PlayerDisconnect(
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
 
-    if (IsFakeClient(client))
+    if (client < 1 || IsFakeClient(client))
     {
         return Plugin_Continue;
     }
