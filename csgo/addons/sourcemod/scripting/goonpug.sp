@@ -876,6 +876,10 @@ public Action:Timer_MatchInfo(Handle:timer)
 {
     switch (g_matchState)
     {
+        case MS_MAP_VOTE:
+        {
+            // Do nothing
+        }
         case MS_CAPTAINS_VOTE:
         {
             PrintCenterTextAll("Match Info:\nMap: %s",
