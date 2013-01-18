@@ -1391,10 +1391,12 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         {
             if (team == CS_TEAM_CT && g_ctSlots > 0)
             {
+                g_ctSlots--;
                 ForcePlayerTeam(client, CS_TEAM_CT);
             }
             else if (team == CS_TEAM_T && g_tSlots > 0)
             {
+                g_tSlots--;
                 ForcePlayerTeam(client, CS_TEAM_T);
             }
             else
