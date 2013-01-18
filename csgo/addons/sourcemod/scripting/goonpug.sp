@@ -1175,25 +1175,60 @@ public Action:Command_Lo3(client, args)
  */
 public Action:Command_Ready(client, args)
 {
-    if (!NeedReadyUp())
+    switch (g_matchState)
     {
-        PrintToChat(client, "[GP] You don't need to ready up right now.");
-    }
+        case MS_WARMUP:
+        {
+            if (g_playerReady[client])
+            {
+                PrintToChat(client, "[GP] You are already ready.");
+            }
+            else if (CheckAllReady() > 0)
+            {
+                decl String:name[64];
+                GetClientName(client, name, sizeof(name));
+                g_playerReady[client] = true;
+                PrintToChatAll("[GP] %s is now ready.", name);
+            }
+            else
+            {
+                PrintToChat(client, "[GP] Maximum number of players already readied up.");
+            }
+        }
+        case MS_PRE_LIVE:
+        {
+            // Only want players in the match to ready up
+            decl String:steamId[MAX_STEAM_ID_LEN];
+            GetClientAuthString(client, steamId, sizeof(steamId));
 
-    if (g_playerReady[client])
-    {
-        PrintToChat(client, "[GP] You are already ready.");
-    }
-    else if (CheckAllReady() > 0)
-    {
-        decl String:name[64];
-        GetClientName(client, name, sizeof(name));
-        g_playerReady[client] = true;
-        PrintToChatAll("[GP] %s is now ready.", name);
-    }
-    else
-    {
-        PrintToChat(client, "[GP] Maximum number of players already readied up.");
+            decl team;
+            if (GetTrieValue(g_playerTeamTrie, steamId, team))
+            {
+                if (team == CS_TEAM_NONE || team == CS_TEAM_SPECTATOR)
+                {
+                    PrintToChat(client, "[GP] You can't ready up right now.");
+                }
+                else if (g_playerReady[client])
+                {
+                    PrintToChat(client, "[GP] You are already ready.");
+                }
+                else
+                {
+                    decl String:name[64];
+                    GetClientName(client, name, sizeof(name));
+                    g_playerReady[client] = true;
+                    PrintToChatAll("[GP] %s is now ready.", name);
+                }
+            }
+            else
+            {
+                PrintToChat(client, "[GP] You can't ready up right now.");
+            }
+        }
+        default:
+        {
+            PrintToChat(client, "[GP] You don't need to ready up right now.");
+        }
     }
 
     return Plugin_Handled;
