@@ -24,6 +24,8 @@
 
 #define GOONPUG_VERSION "0.0.3"
 
+#define STEAMID_LEN 32
+
 /**
  * Match states
  */
@@ -60,13 +62,17 @@ new g_tCaptain = 0;
 new Handle:g_teamPickMenu = INVALID_HANDLE;
 
 // Team Management globals
-#define STEAMID_LEN 32
 new bool:g_lockTeams = false;
 new Handle:g_ctPlayers = INVALID_HANDLE;
+new g_ctSlots = 0;
 new Handle:g_tPlayers = INVALID_HANDLE;
+new g_tSlots = 0;
 
 // Player ready up states
 new bool:g_playerReady[MAXPLAYERS + 1];
+
+// Grace timer handles
+new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
 /**
  * Public plugin info
@@ -114,15 +120,41 @@ public OnPluginStart()
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
+
+    g_graceTimerTrie = CreateTrie();
+}
+
+public OnPluginEnd()
+{
+    if (g_ctPlayers != INVALID_HANDLE)
+    {
+        CloseHandle(g_ctPlayers);
+    }
+    if (g_tPlayers != INVALID_HANDLE)
+    {
+        CloseHandle(g_tPlayers);
+    }
+    if (g_graceTimerTrie != INVALID_HANDLE)
+    {
+        CloseHandle(g_graceTimerTrie);
+    }
 }
 
 public OnClientAuthorized(client, const String:auth[])
 {
-    if (!IsFakeClient(client))
+    if (IsFakeClient(client))
     {
-        decl String:playerName[64];
-        GetClientName(client, playerName, sizeof(playerName));
-        PrintToChatAll("\x01\x0b\x04%s (%s) connected", playerName, auth);
+        return;
+    }
+
+    decl String:playerName[64];
+    GetClientName(client, playerName, sizeof(playerName));
+    PrintToChatAll("\x01\x0b\x04%s connected", playerName);
+
+    decl Handle:timer;
+    if (GetTrieValue(g_graceTimerTrie, auth, timer))
+    {
+        KillTimer(timer);
     }
 }
 
@@ -1334,44 +1366,48 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     StripQuotes(param);
     new team = StringToInt(param);
 
-    if (team == CS_TEAM_SPECTATOR)
+    if (g_lockTeams)
     {
-        return Plugin_Continue;
-    }
-    else
-    {
-        if (g_lockTeams)
-        {
-            decl String:steamId[STEAMID_LEN];
-            GetClientAuthString(client, steamId, sizeof(steamId));
+        decl String:steamId[STEAMID_LEN];
+        GetClientAuthString(client, steamId, sizeof(steamId));
 
-            if (FindStringInArray(g_ctPlayers, steamId) >= 0)
+        if (FindStringInArray(g_ctPlayers, steamId) >= 0)
+        {
+            if (team == CS_TEAM_T)
             {
-                if (team == CS_TEAM_T)
-                {
-                    PrintToChat(client, "[GP] You are assigned to the CT team.");
-                }
-                ChangeClientTeam(client, CS_TEAM_CT);
+                PrintToChat(client, "[GP] You are assigned to the CT team.");
             }
-            else if (FindStringInArray(g_tPlayers, steamId) >= 0)
+            ChangeClientTeam(client, CS_TEAM_CT);
+        }
+        else if (FindStringInArray(g_tPlayers, steamId) >= 0)
+        {
+            if (team == CS_TEAM_CT)
             {
-                if (team == CS_TEAM_CT)
-                {
-                    PrintToChat(client, "[GP] You are assigned to the T team.");
-                }
-                ChangeClientTeam(client, CS_TEAM_T);
+                PrintToChat(client, "[GP] You are assigned to the T team.");
             }
-            else
-            {
-                PrintToChat(client, "[GP] Teams are locked right now, forcing you to spectate.");
-                ChangeClientTeam(client, CS_TEAM_SPECTATOR);
-            }
-            return Plugin_Handled;
+            ChangeClientTeam(client, CS_TEAM_T);
         }
         else
         {
-            return Plugin_Continue;
+            if (team == CS_TEAM_CT && g_ctSlots > 0)
+            {
+                ForcePlayerTeam(client, CS_TEAM_CT);
+            }
+            else if (team == CS_TEAM_T && g_tSlots > 0)
+            {
+                ForcePlayerTeam(client, CS_TEAM_T);
+            }
+            else
+            {
+                PrintToChat(client, "[GP] Teams are full right now.");
+                ChangeClientTeam(client, CS_TEAM_SPECTATOR);
+            }
         }
+        return Plugin_Handled;
+    }
+    else
+    {
+        return Plugin_Continue;
     }
 }
 
@@ -1428,6 +1464,63 @@ public Action:Timer_RespawnPlayer(Handle:timer, any:client)
     }
 }
 
+public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
+{
+    static count = 1;
+    decl String:playerName[64];
+    decl String:steamId[STEAMID_LEN];
+
+    ResetPack(pack);
+    ReadPackString(pack, playerName, sizeof(playerName));
+    ReadPackString(pack, steamId, sizeof(steamId));
+
+    if (count < 3)
+    {
+        PrintToChatAll("\x01\x0b\x02[GP]: %s has %d minutes to reconnect.",
+                       playerName, (3 - count));
+        return Plugin_Continue;
+    }
+    else
+    {
+        PrintToChatAll("\x01\x0b\x02[GP]: %s has abandoned the match and will receive a 30 minute ban.",
+                       playerName);
+        BanIdentity(steamId, 30, BANFLAG_AUTHID, "Abandoned a competitive match");
+
+        new index = FindStringInArray(g_ctPlayers, steamId);
+        if (index >= 0)
+        {
+            RemoveFromArray(g_ctPlayers, index);
+            g_ctSlots++;
+            PrintToChatAll("[GP]: The CT team now has an open slot. A spectator may join the CT team.");
+        }
+        else 
+        {
+            index = FindStringInArray(g_tPlayers, steamId);
+            if (index >= 0)
+            {
+                RemoveFromArray(g_tPlayers, index);
+                g_tSlots++;
+                PrintToChatAll("[GP]: The T team now has an open slot. A spectator may join the T team.");
+            }
+        }
+        return Plugin_Stop;
+    }
+}
+
+/**
+ * Start a 3 minute reconnect grace timer for the given player
+ */
+StartGraceTimer(const String:playerName[], const String:steamId[])
+{
+    PrintToChatAll("\x01\x0b\x02[GP]: %s has 3 minutes to reconnect.",
+                   playerName);
+    new Handle:pack;
+    new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
+    WritePackString(pack, playerName);
+    WritePackString(pack, steamId);
+    SetTrieValue(g_graceTimerTrie, steamId, timer);
+}
+
 /**
  * Handle player disconnections
  */
@@ -1451,7 +1544,7 @@ public Action:Event_PlayerDisconnect(
     decl String:reason[64];
     GetEventString(event, "reason", reason, sizeof(reason));
 
-    PrintToChatAll("\x01\x0b\x04%s (%s) disconnected: %s", playerName, steamId, reason);
+    PrintToChatAll("\x01\x0b\x04%s disconnected: %s", playerName, reason);
 
     switch (g_matchState)
     {
@@ -1487,7 +1580,7 @@ public Action:Event_PlayerDisconnect(
             if (FindStringInArray(g_ctPlayers, steamId) >= 0
                 || FindStringInArray(g_tPlayers, steamId) >= 0)
             {
-                //TODO implement this
+                StartGraceTimer(playerName, steamId);
             }
         }
         case MS_LIVE:
@@ -1500,7 +1593,7 @@ public Action:Event_PlayerDisconnect(
             if (FindStringInArray(g_ctPlayers, steamId) >= 0
                 || FindStringInArray(g_tPlayers, steamId) >= 0)
             {
-                //TODO implement this
+                StartGraceTimer(playerName, steamId);
             }
         }
         default:
