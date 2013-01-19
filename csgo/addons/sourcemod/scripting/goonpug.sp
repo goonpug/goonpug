@@ -1,8 +1,24 @@
-/* (c) Copyright 2013 Peter Rowlands */
-/**
- * Goon competitive PUG plugin
+/* Copyright (c) 2013 Peter Rowlands
  *
- * Author: astroman <peter@pmrowla.com>
+ * This file is part of GoonPUG.
+ *
+ * GoonPUG is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundataion, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * GoonPUG is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with GoonPUG.  If not, see <http://www.gnu.org/licenses/>.
+ */
+ /**
+ * CS:GO competitive PUG plugin
+ *
+ * Author: Peter "astroman" Rowlands <peter@pmrowla.com>
  */
 
 //#define DEBUG 1

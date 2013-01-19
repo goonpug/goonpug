@@ -131,5 +131,5 @@ or `/lo3` if GOTV is running on the server.
 License
 -------
 GoonPUG is distributed under the GNU General Public License version 3. See
-[LICENSE.md](https://github.com/pmrowla/goonpug/blob/master/LICENSE.md) for
+[COPYING.md](https://github.com/pmrowla/goonpug/blob/master/COPYING.md) for
 more information.
