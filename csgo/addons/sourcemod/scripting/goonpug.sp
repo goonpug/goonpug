@@ -1468,7 +1468,7 @@ public Action:Timer_RespawnPlayer(Handle:timer, any:client)
 
 public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
 {
-    static count = 1;
+    static count = 0;
     decl String:playerName[64];
     decl String:steamId[STEAMID_LEN];
 
@@ -1476,6 +1476,7 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
     ReadPackString(pack, playerName, sizeof(playerName));
     ReadPackString(pack, steamId, sizeof(steamId));
 
+    count++;
     if (count < 3)
     {
         PrintToChatAll("\x01\x0b\x02[GP]: %s has %d minutes to reconnect.",
