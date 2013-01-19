@@ -27,18 +27,18 @@
 #define STEAMID_LEN 32
 
 /**
- * Match states
- */
+* Match states
+*/
 enum MatchState
 {
-    MS_WARMUP = 0,
-    MS_MAP_VOTE,
-    MS_CAPTAINS_VOTE,
-    MS_PICK_TEAMS,
-    MS_PRE_LIVE,
-    MS_LO3,
-    MS_LIVE,
-    MS_POST_MATCH,
+MS_WARMUP = 0,
+MS_MAP_VOTE,
+MS_CAPTAINS_VOTE,
+MS_PICK_TEAMS,
+MS_PRE_LIVE,
+MS_LO3,
+MS_LIVE,
+MS_POST_MATCH,
 };
 
 // Global convar handles
@@ -75,28 +75,28 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
 /**
- * Public plugin info
- */
+* Public plugin info
+*/
 public Plugin:myinfo = {
-    name = "GoonPUG",
-    author = "astroman <peter@pmrowla.com>",
-    description = "CS:GO PUG Plugin",
-    version = GOONPUG_VERSION,
-    url = "http://github.com/pmrowla/goonpug",
+name = "GoonPUG",
+author = "astroman <peter@pmrowla.com>",
+description = "CS:GO PUG Plugin",
+version = GOONPUG_VERSION,
+url = "http://github.com/pmrowla/goonpug",
 }
 
 /**
- * Initialize GoonPUG
- */
+* Initialize GoonPUG
+*/
 public OnPluginStart()
 {
-    // Set up GoonPUG convars
-    CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
-                 FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
-    g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
-                                    "Maximum players allowed in a PUG",
-                                    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
-    g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
+// Set up GoonPUG convars
+CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
+             FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
+g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
+                                "Maximum players allowed in a PUG",
+                                FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
                                     "Use deathmatch respawning during warmup rounds",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
@@ -887,7 +887,7 @@ ForcePlayerTeam(client, team)
         if (team == CS_TEAM_CT)
         {
             new index = FindStringInArray(g_ctPlayers, steamId);
-            if (index >= 0)
+            if (index < 0)
             {
                 PushArrayString(g_ctPlayers, steamId);
             }
