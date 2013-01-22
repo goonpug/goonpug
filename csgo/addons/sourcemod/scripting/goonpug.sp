@@ -122,6 +122,7 @@ g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
+    RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
 
@@ -1349,6 +1350,62 @@ public Action:Command_Unready(client, args)
     }
 
     return Plugin_Handled;
+}
+
+/**
+ * Initiates forfeit vote
+ */
+public Action:Command_Forfeit(client, args)
+{
+	if (IsVoteInProgress())
+	{
+		return Plugin_Handled;
+	}
+
+	//alert everyone that a forfeit vote is taking place
+	PrintToChat(client, "[GP] Coward.");
+	decl String:name[64];
+        GetClientName(client, name, sizeof(name));
+        g_playerReady[client] = false;
+        PrintToChatAll("[GP] %s wants to forfeit.", name);
+
+	//build the forfeit vote menu
+	new Handle:menu = CreateMenu(MenuForfeit);
+	SetVoteResultCallback(menu, Handle_ForfeitResults);
+	SetMenuTitle(menu, "Accept Cowardice?");
+	AddMenuItem(menu, "yes", "yes");
+	AddMenuItem(menu, "no", "no");
+	SetMenuExitButton(menu, false);
+
+	//get the team of client who initiated vote
+	new team = GetClientTeam(client);
+	
+	//iterate through all players and display vote to those on the same team
+	for (new i = 1; i <= MAXPLAYERS; i++)
+        {
+            if (GetClientTeam(i) == team)
+            {
+                //display vote
+		DisplayMenu(menu, i, 0);
+            }
+        }
+
+	return Plugin_Handled;
+}
+
+public MenuForfeit(Handle:menu, MenuAction:action, param1, param2){
+	if(action == MenuAction_End) {
+		CloseHandle(menu);
+	}
+}
+
+public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
+{
+	if(num_items == 1)
+	{
+		PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
+		PostMatch();
+	}
 }
 
 /**
