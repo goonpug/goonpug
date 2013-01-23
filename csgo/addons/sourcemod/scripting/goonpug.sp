@@ -106,15 +106,15 @@ url = "http://github.com/pmrowla/goonpug",
 */
 public OnPluginStart()
 {
-// Set up GoonPUG convars
-CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
-             FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
-g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
-                                "Maximum players allowed in a PUG",
-                                FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
-g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
-                                    "Use deathmatch respawning during warmup rounds",
+    // Set up GoonPUG convars
+    CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
+                 FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
+    g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
+                                    "Maximum players allowed in a PUG",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
+                                        "Use deathmatch respawning during warmup rounds",
+                                        FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
 
     AutoExecConfig(true, "goonpug");
@@ -1358,30 +1358,30 @@ public Action:Command_Unready(client, args)
 public Action:Command_Forfeit(client, args)
 {
     if (IsVoteInProgress())
-	{
-		return Plugin_Handled;
-	}
+    {
+        return Plugin_Handled;
+    }
 
-	//alert everyone that a forfeit vote is taking place
-	PrintToChat(client, "[GP] Coward.");
-	decl String:name[64];
+    //alert everyone that a forfeit vote is taking place
+    PrintToChat(client, "[GP] Coward.");
+    decl String:name[64];
     GetClientName(client, name, sizeof(name));
     g_playerReady[client] = false;
     PrintToChatAll("[GP] %s wants to forfeit.", name);
 
-	//build the forfeit vote menu
-	new Handle:menu = CreateMenu(MenuForfeit);
-	SetVoteResultCallback(menu, Handle_ForfeitResults);
-	SetMenuTitle(menu, "Accept Cowardice?");
-	AddMenuItem(menu, "yes", "yes");
-	AddMenuItem(menu, "no", "no");
-	SetMenuExitButton(menu, false);
+    //build the forfeit vote menu
+    new Handle:menu = CreateMenu(MenuForfeit);
+    SetVoteResultCallback(menu, Handle_ForfeitResults);
+    SetMenuTitle(menu, "Accept Cowardice?");
+    AddMenuItem(menu, "yes", "yes");
+    AddMenuItem(menu, "no", "no");
+    SetMenuExitButton(menu, false);
 
-	//get the team of client who initiated vote
-	new team = GetClientTeam(client);
-	
-	//iterate through all players and display vote to those on the same team
-	for (new i = 1; i <= MAXPLAYERS; i++)
+    //get the team of client who initiated vote
+    new team = GetClientTeam(client);
+    
+    //iterate through all players and display vote to those on the same team
+    for (new i = 1; i <= MAXPLAYERS; i++)
         {
             if (GetClientTeam(i) == team)
             {
@@ -1390,30 +1390,30 @@ public Action:Command_Forfeit(client, args)
             }
         }
 
-	return Plugin_Handled;
+    return Plugin_Handled;
 }
 
 public MenuForfeit(Handle:menu, MenuAction:action, param1, param2){
-	if(action == MenuAction_End) {
-		CloseHandle(menu);
-	}
+    if(action == MenuAction_End) {
+        CloseHandle(menu);
+    }
 }
 
 public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
 {
-    new String:vote[64];
+    decl String:vote[64];
     GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
 
-	//check to see that no one voted no, then end the match
-	if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && vote == "yes")
-	{
-		PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
-		PostMatch();
-	}
-	else
-	{
-		PrintToChatAll("[GP] Forfeit vote failed.");
-	}
+    //check to see that no one voted no, then end the match
+    if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && StrEqual(vote, "yes"))
+    {
+        PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
+        PostMatch();
+    }
+    else
+    {
+        PrintToChatAll("[GP] Forfeit vote failed.");
+    }
 }
 
 /**
@@ -1421,7 +1421,7 @@ public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_i
  */
 public Action:Command_Say(client, const String:command[], argc)
 {
-    new String:param[32];
+    decl String:param[32];
     GetCmdArg(1, param, sizeof(param));
     StripQuotes(param);
     if (StrEqual(param, ".ready"))
@@ -1442,7 +1442,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     if (!IsValidPlayer(client))
         return Plugin_Continue;
 
-    new String:param[16];
+    decl String:param[16];
     GetCmdArg(1, param, sizeof(param));
     StripQuotes(param);
     new team = StringToInt(param);
