@@ -1401,10 +1401,15 @@ public MenuForfeit(Handle:menu, MenuAction:action, param1, param2){
 
 public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
 {
-	if(num_items == 1)
+	//check to see that no one voted no, then end the match
+	if(item_info[1][VOTEINFO_ITEM_VOTES] == 0)
 	{
 		PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
 		PostMatch();
+	}
+	else
+	{
+		PrintToChatAll("[GP] Forfeit vote failed.");
 	}
 }
 
