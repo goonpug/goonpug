@@ -1357,7 +1357,7 @@ public Action:Command_Unready(client, args)
  */
 public Action:Command_Forfeit(client, args)
 {
-	if (IsVoteInProgress())
+    if (IsVoteInProgress())
 	{
 		return Plugin_Handled;
 	}
@@ -1365,9 +1365,9 @@ public Action:Command_Forfeit(client, args)
 	//alert everyone that a forfeit vote is taking place
 	PrintToChat(client, "[GP] Coward.");
 	decl String:name[64];
-        GetClientName(client, name, sizeof(name));
-        g_playerReady[client] = false;
-        PrintToChatAll("[GP] %s wants to forfeit.", name);
+    GetClientName(client, name, sizeof(name));
+    g_playerReady[client] = false;
+    PrintToChatAll("[GP] %s wants to forfeit.", name);
 
 	//build the forfeit vote menu
 	new Handle:menu = CreateMenu(MenuForfeit);
@@ -1386,7 +1386,7 @@ public Action:Command_Forfeit(client, args)
             if (GetClientTeam(i) == team)
             {
                 //display vote
-		DisplayMenu(menu, i, 0);
+                DisplayMenu(menu, i, 0);
             }
         }
 
@@ -1401,8 +1401,11 @@ public MenuForfeit(Handle:menu, MenuAction:action, param1, param2){
 
 public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
 {
+    new String:vote[64];
+    GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
+
 	//check to see that no one voted no, then end the match
-	if(item_info[1][VOTEINFO_ITEM_VOTES] == 0)
+	if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && vote == "yes")
 	{
 		PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
 		PostMatch();
