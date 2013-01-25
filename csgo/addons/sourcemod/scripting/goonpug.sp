@@ -210,6 +210,7 @@ public OnMapStart()
 
 public OnMapEnd()
 {
+    ClearTrie(g_graceTimerTrie);
     CloseMapLists();
 }
 
@@ -1599,7 +1600,7 @@ StartGraceTimer(const String:playerName[], const String:steamId[])
     PrintToChatAll("\x01\x0b\x02[GP]: %s has 3 minutes to reconnect.",
                    playerName);
     new Handle:pack;
-    new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE);
+    new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE | TIMER_FLAG_NO_MAPCHANGE);
     WritePackString(pack, playerName);
     WritePackString(pack, steamId);
     SetTrieValue(g_graceTimerTrie, steamId, timer);
