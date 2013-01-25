@@ -1511,8 +1511,10 @@ public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontB
 {
     if (g_lockTeams)
     {
-        new Handle:tmp = g_ctPlayers;
-        g_ctPlayers = g_tPlayers;
+        new Handle:tmp = CloneArray(g_ctPlayers);
+        CloseHandle(g_ctPlayers);
+        g_ctPlayers = CloneArray(g_tPlayers);
+        CloseHandle(g_tPlayers);
         g_tPlayers = tmp;
     }
 
