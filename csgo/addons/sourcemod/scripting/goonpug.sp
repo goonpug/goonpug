@@ -1358,8 +1358,15 @@ public Action:Command_Unready(client, args)
  */
 public Action:Command_Forfeit(client, args)
 {
+    if (g_matchState != MS_LIVE)
+    {
+        PrintToChat(client, "[GP] You can't do that right now.");
+        return Plugin_Handled;
+    }
+
     if (IsVoteInProgress())
     {
+        PrintToChat(client, "[GP] You can't forfeit while another vote is in progress.");
         return Plugin_Handled;
     }
 
@@ -1371,8 +1378,8 @@ public Action:Command_Forfeit(client, args)
     PrintToChatAll("[GP] %s wants to forfeit.", name);
 
     //build the forfeit vote menu
-    new Handle:menu = CreateMenu(MenuForfeit);
-    SetVoteResultCallback(menu, Handle_ForfeitResults);
+    new Handle:menu = CreateMenu(Menu_ForfeitVote);
+    SetVoteResultCallback(menu, VoteHandler_ForfeitVote);
     SetMenuTitle(menu, "Accept Cowardice?");
     AddMenuItem(menu, "yes", "yes");
     AddMenuItem(menu, "no", "no");
@@ -1382,25 +1389,26 @@ public Action:Command_Forfeit(client, args)
     new team = GetClientTeam(client);
     
     //iterate through all players and display vote to those on the same team
-    for (new i = 1; i <= MAXPLAYERS; i++)
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && GetClientTeam(i) == team)
         {
-            if (GetClientTeam(i) == team)
-            {
-                //display vote
-                DisplayMenu(menu, i, 0);
-            }
+            //display vote
+            DisplayMenu(menu, i, 0);
         }
+    }
 
     return Plugin_Handled;
 }
 
-public MenuForfeit(Handle:menu, MenuAction:action, param1, param2){
-    if(action == MenuAction_End) {
+public Menu_ForfeitVote(Handle:menu, MenuAction:action, param1, param2){
+    if (action == MenuAction_End)
+    {
         CloseHandle(menu);
     }
 }
 
-public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
+public VoteHandler_ForfeitVote(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
 {
     decl String:vote[64];
     GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
@@ -1409,6 +1417,7 @@ public Handle_ForfeitResults(Handle:menu, num_votes, num_clients, const client_i
     if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && StrEqual(vote, "yes"))
     {
         PrintToChatAll("[GP] Team has unanimously agreed to forfeit");
+        //TODO throw the appropriate events to end a match here
         PostMatch();
     }
     else
