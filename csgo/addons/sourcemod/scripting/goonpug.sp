@@ -1069,6 +1069,7 @@ public Action:Timer_Lo3Third(Handle:timer)
         return Plugin_Stop;
 
     ChangeMatchState(MS_LIVE);
+    LogToGame("GoonPUG triggered \"Start_Match\"");
     PrintCenterTextAll("LIVE! LIVE! LIVE!");
     return Plugin_Stop;
 }
@@ -1222,6 +1223,7 @@ PostMatch()
 {
     StopServerDemo();
     ChangeMatchState(MS_POST_MATCH);
+    LogToGame("GoonPUG triggered \"End_Match\"");
 
     // Set the nextmap to a warmup map
     decl String:map[64];
@@ -1247,6 +1249,7 @@ public Action:Timer_IdleMap(Handle:timer)
  */
 RestartWarmup(bool:reset=true)
 {
+    LogToGame("GoonPUG triggered \"Start_Warmup\"");
     UnlockAndClearTeams();
     ChangeMatchState(MS_WARMUP);
     StartReadyUp(reset);
