@@ -1387,16 +1387,19 @@ public Action:Command_Forfeit(client, args)
 
     //get the team of client who initiated vote
     new team = GetClientTeam(client);
-    
-    //iterate through all players and display vote to those on the same team
+    new clientCount = 0;
+    new clients[MAXPLAYERS + 1];
+
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && GetClientTeam(i) == team)
         {
-            //display vote
-            DisplayMenu(menu, i, 0);
+            clients[clientCount] = i;
+            clientCount++;
         }
     }
+
+    VoteMenu(menu, clients, clientCount, 30);
 
     return Plugin_Handled;
 }
