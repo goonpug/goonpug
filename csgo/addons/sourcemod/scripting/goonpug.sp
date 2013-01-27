@@ -134,6 +134,8 @@ public OnPluginStart()
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
+    RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
+    RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP, "Locks teams");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -1242,6 +1244,38 @@ public Action:Command_Lo3(client, args)
     LockCurrentTeams();
     StartLiveMatch();
     return Plugin_Handled;
+}
+
+/**
+ * Unlocks teams
+ */
+public Action:Command_UnlockTeams(client, args)
+{
+    if (g_lockTeams)
+    {
+        g_lockTeams = false;
+        PrintToChatAll("[GP] Teams are now unlocked.");
+    }
+    else
+    {
+        PrintToChat(client, "[GP] Teams are already unlocked.");
+    }
+}
+
+/**
+ * Locks teams
+ */
+public Action:Command_LockTeams(client, args)
+{
+    if (!g_lockTeams)
+    {
+        LockCurrentTeams();
+        PrintToChatAll("[GP] Teams are now locked.");
+    }
+    else
+    {
+        PrintToChat(client, "[GP] Teams are already locked.");
+    }
 }
 
 /**
