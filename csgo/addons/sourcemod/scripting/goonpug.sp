@@ -490,28 +490,12 @@ public VoteHandler_CaptainsVote(Handle:menu,
                                const itemInfo[][2])
 {
     new firstPlaceVotes = 0;
-    new secondPlaceVotes = -1;
     new Handle:firstPlaceWinners = CreateArray();
-    new Handle:secondPlaceWinners = INVALID_HANDLE;
 
     for (new i = 0; i < numItems; i++)
     {
         if (itemInfo[i][VOTEINFO_ITEM_VOTES] > firstPlaceVotes)
         {
-            // The votes for itemInfo[i] should be the new first place total
-
-            // If firstPlaceVotes == 0 then don't set second place yet
-            if (firstPlaceVotes != 0)
-            {
-                // Second place should be the old first place
-                if (secondPlaceWinners != INVALID_HANDLE)
-                {
-                    CloseHandle(secondPlaceWinners);
-                }
-                secondPlaceWinners = CloneArray(firstPlaceWinners);
-                secondPlaceVotes = firstPlaceVotes;
-            }
-
             firstPlaceVotes = itemInfo[i][VOTEINFO_ITEM_VOTES];
             ClearArray(firstPlaceWinners);
             PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
@@ -521,36 +505,11 @@ public VoteHandler_CaptainsVote(Handle:menu,
             // This item is in a tie with the current first place
             PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
-        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes
-                 && firstPlaceVotes != 0)
-        {
-            // Second place should be the old first place
-            if (secondPlaceWinners == INVALID_HANDLE)
-            {
-                secondPlaceWinners = CreateArray();
-            }
-            ClearArray(secondPlaceWinners);
-            PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
-        }
-        else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == secondPlaceVotes)
-        {
-            // This item is in a tie with the current second place
-            PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
-        }
     }
 
     new firstPlaceTotal = GetArraySize(firstPlaceWinners);
-    new secondPlaceTotal = 0;
-    if (secondPlaceWinners != INVALID_HANDLE)
-    {
-        secondPlaceTotal = GetArraySize(secondPlaceWinners);
-    }
-    assert(firstPlaceTotal > 0)
-
+    assert (firstPlaceTotal > 0)
     new captainIndex[2];
-
-    captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-
     if (firstPlaceTotal > 2)
     {
         new rand1 = GetRandomInt(0, firstPlaceTotal - 1);
@@ -568,22 +527,35 @@ public VoteHandler_CaptainsVote(Handle:menu,
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
         captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
     }
-    else if (secondPlaceTotal > 0)
+    else if (firstPlaceTotal == 1)
     {
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-        new rand = GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1);
-        captainIndex[1] = GetArrayCell(secondPlaceWinners, rand);
-    }
-    else
-    {
-        captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-        do
+        new Handle:secondPlaceWinners = CreateArray();
+        new secondPlaceVotes = 0;
+        for (new i = 0; i < numItems; i++)
         {
-            new rand = GetRandomInt(0, numItems - 1);
-            captainIndex[1] = itemInfo[rand][VOTEINFO_ITEM_INDEX];
-        } while (captainIndex[0] != captainIndex[1]);
-
+            if (i == captainIndex[0])
+            {
+                // Skip the first place index
+                continue;
+            }
+            if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes)
+            {
+                secondPlaceVotes = itemInfo[i][VOTEINFO_ITEM_VOTES];
+                ClearArray(secondPlaceWinners);
+                PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
+            }
+            else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == firstPlaceVotes)
+            {
+                // This item is in a tie with the current first place
+                PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
+            }
+        }
+        captainIndex[1] = GetArrayCell(secondPlaceWinners, GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1));
+        CloseHandle(secondPlaceWinners);
     }
+
+    CloseHandle(firstPlaceWinners);
 
     for (new i = 0; i < 2; i++)
     {
@@ -592,12 +564,6 @@ public VoteHandler_CaptainsVote(Handle:menu,
         g_captains[i] = FindClientByName(name, true);
         assert(g_captains[i] > 0)
         PrintToChatAll("[GP] %s will be a captain.", name);
-    }
-
-    CloseHandle(firstPlaceWinners);
-    if (secondPlaceWinners != INVALID_HANDLE)
-    {
-        CloseHandle(secondPlaceWinners);
     }
 }
 
