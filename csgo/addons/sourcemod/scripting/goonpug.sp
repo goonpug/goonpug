@@ -714,6 +714,34 @@ LockAndClearTeams()
 }
 
 /**
+ * Lock current team status for all players
+ */
+LockCurrentTeams()
+{
+    g_lockTeams = true;
+    g_ctSlots = 0;
+    g_tSlots = 0;
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
+        {
+            new team = GetClientTeam(i);
+            decl String:steamId[STEAMID_LEN];
+            GetClientAuthString(i, steamId, sizeof(steamId));
+            if (team != CS_TEAM_T || team != CS_TEAM_CT)
+            {
+                team = CS_TEAM_SPECTATOR;
+            }
+            SetTrieValue(g_playerTeamTrie, steamId, team);
+            if (FindStringInArray(g_playerTeamKeys, steamId) < 0)
+            {
+                PushArrayString(g_playerTeamKeys, steamId);
+            }
+        }
+    }
+}
+
+/**
  * Unlock team status for all players
  */
 UnlockAndClearTeams()
@@ -1206,6 +1234,7 @@ public Action:Command_Warmup(client, args)
  */
 public Action:Command_Lo3(client, args)
 {
+    LockCurrentTeams();
     StartLiveMatch();
     return Plugin_Handled;
 }
