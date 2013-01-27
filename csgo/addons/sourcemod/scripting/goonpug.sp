@@ -131,6 +131,7 @@ public OnPluginStart()
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
+    RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
 
@@ -1342,6 +1343,14 @@ public Action:Command_Forfeit(client, args)
         return Plugin_Handled;
     }
 
+    //get the team of client who initiated vote
+    new team = GetClientTeam(client);
+    if (team != CS_TEAM_T && team != CS_TEAM_CT)
+    {
+        PrintToChat(client, "[GP] You must be participating the match to start a restart vote.");
+        return Plugin_Handled;
+    }
+
     if (IsVoteInProgress())
     {
         PrintToChat(client, "[GP] You can't forfeit while another vote is in progress.");
@@ -1349,7 +1358,6 @@ public Action:Command_Forfeit(client, args)
     }
 
     //alert everyone that a forfeit vote is taking place
-    PrintToChat(client, "[GP] Coward.");
     decl String:name[64];
     GetClientName(client, name, sizeof(name));
     g_playerReady[client] = false;
@@ -1358,13 +1366,11 @@ public Action:Command_Forfeit(client, args)
     //build the forfeit vote menu
     new Handle:menu = CreateMenu(Menu_ForfeitVote);
     SetVoteResultCallback(menu, VoteHandler_ForfeitVote);
-    SetMenuTitle(menu, "Accept Cowardice?");
-    AddMenuItem(menu, "yes", "yes");
-    AddMenuItem(menu, "no", "no");
+    SetMenuTitle(menu, "Forfeit?");
+    AddMenuItem(menu, "yes", "Yes");
+    AddMenuItem(menu, "no", "No");
     SetMenuExitButton(menu, false);
 
-    //get the team of client who initiated vote
-    new team = GetClientTeam(client);
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
 
@@ -1408,6 +1414,60 @@ public VoteHandler_ForfeitVote(Handle:menu, num_votes, num_clients, const client
 }
 
 /**
+ * Initiates restart vote
+ */
+public Action:Command_Restart(client, args)
+{
+    if (g_matchState != MS_LIVE)
+    {
+        PrintToChat(client, "[GP] You can't do that right now.");
+        return Plugin_Handled;
+    }
+
+    new team = GetClientTeam(client);
+    if (team != CS_TEAM_T && team != CS_TEAM_CT)
+    {
+        PrintToChat(client, "[GP] You must be participating the match to start a restart vote.");
+        return Plugin_Handled;
+    }
+
+    if (IsVoteInProgress())
+    {
+        PrintToChat(client, "[GP] You can't start a restart vote while another vote is in progress.");
+        return Plugin_Handled;
+    }
+
+    decl String:name[64];
+    GetClientName(client, name, sizeof(name));
+    g_playerReady[client] = false;
+    PrintToChatAll("[GP] %s wants to restart the match.", name);
+
+    //build the forfeit vote menu
+    new Handle:menu = CreateMenu(Menu_RestartVote);
+    SetVoteResultCallback(menu, VoteHandler_RestartVote);
+    SetMenuTitle(menu, "Restart match?");
+    AddMenuItem(menu, "yes", "Yes");
+    AddMenuItem(menu, "no", "No");
+    SetMenuExitButton(menu, false);
+
+    new clientCount = 0;
+    new clients[MAXPLAYERS + 1];
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        team = GetClientTeam(i);
+        if (IsValidPlayer(i) && (team == CS_TEAM_CT || team == CS_TEAM_T))
+        {
+            clients[clientCount] = i;
+            clientCount++;
+        }
+    }
+
+    VoteMenu(menu, clients, clientCount, 30);
+
+    return Plugin_Handled;
+}
+
+/**
  * Hooks the say command
  */
 public Action:Command_Say(client, const String:command[], argc)
@@ -1422,6 +1482,31 @@ public Action:Command_Say(client, const String:command[], argc)
     else
     {
         return Plugin_Continue;
+    }
+}
+
+public Menu_RestartVote(Handle:menu, MenuAction:action, param1, param2){
+    if (action == MenuAction_End)
+    {
+        CloseHandle(menu);
+    }
+}
+
+public VoteHandler_RestartVote(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
+{
+    decl String:vote[64];
+    GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
+
+    // check to see that no one voted no, then end the match
+    if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && StrEqual(vote, "yes"))
+    {
+        PrintToChatAll("[GP] Restart vote passed. Restarting match...");
+        LogToGame("GoonPUG triggered \"Abandon_Match\"");
+        StartLiveMatch();
+    }
+    else
+    {
+        PrintToChatAll("[GP] Restart vote failed.");
     }
 }
 
