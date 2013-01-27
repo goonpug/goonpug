@@ -324,15 +324,19 @@ Handle:BuildMapVoteMenu()
 
     new Handle:menu = CreateMenu(Menu_MapVote);
     SetMenuTitle(menu, "Vote for the map to play");
-    for (new i = 0; i < GetArraySize(g_pugMapList); i++)
+    new Handle:maplist = CloneArray(g_pugMapList);
+    for (new i = GetArraySize(g_pugMapList); i > 0; i--)
     {
         decl String:mapname[64];
-        GetArrayString(g_pugMapList, i, mapname, sizeof(mapname));
+        new index = GetRandomInt(0, i);
+        GetArrayString(g_pugMapList, index, mapname, sizeof(mapname));
         if (IsMapValid(mapname))
         {
             AddMenuItem(menu, mapname, mapname);
         }
+        RemoveFromArray(maplist, index);
     }
+    CloseHandle(maplist);
     SetMenuExitButton(menu, false);
 
     return menu;
