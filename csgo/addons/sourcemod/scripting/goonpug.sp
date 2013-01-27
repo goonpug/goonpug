@@ -38,7 +38,7 @@
 #include <sdktools>
 #include <sdktools_functions>
 
-#define GOONPUG_VERSION "0.0.3"
+#define GOONPUG_VERSION "0.0.4"
 
 #define STEAMID_LEN 32
 
