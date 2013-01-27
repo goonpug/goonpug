@@ -79,9 +79,9 @@ new Handle:g_teamPickMenu = INVALID_HANDLE;
 
 // Team Management globals
 new bool:g_lockTeams = false;
-new Handle:g_ctPlayers = INVALID_HANDLE;
+new Handle:g_playerTeamTrie = INVALID_HANDLE;
+new Handle:g_playerTeamKeys = INVALID_HANDLE;
 new g_ctSlots = 0;
-new Handle:g_tPlayers = INVALID_HANDLE;
 new g_tSlots = 0;
 
 // Player ready up states
@@ -117,7 +117,15 @@ public OnPluginStart()
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
 
+    new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
+    if ((pugPlayers % 2) != 0)
+    {
+        SetConVarInt(g_cvar_maxPugPlayers, pugPlayers + 1);
+    }
+
     AutoExecConfig(true, "goonpug");
+
+    HookConVarChange(g_cvar_maxPugPlayers, ConVarChange_MaxPugPlayers);
 
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
@@ -139,21 +147,30 @@ public OnPluginStart()
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 
     g_graceTimerTrie = CreateTrie();
+    g_playerTeamTrie = CreateTrie();
+    g_playerTeamKeys = CreateArray(STEAMID_LEN);
 }
 
 public OnPluginEnd()
 {
-    if (g_ctPlayers != INVALID_HANDLE)
+    if (g_playerTeamTrie != INVALID_HANDLE)
     {
-        CloseHandle(g_ctPlayers);
-    }
-    if (g_tPlayers != INVALID_HANDLE)
-    {
-        CloseHandle(g_tPlayers);
+        ClearTrie(g_playerTeamTrie);
+        CloseHandle(g_playerTeamTrie);
     }
     if (g_graceTimerTrie != INVALID_HANDLE)
     {
+        ClearTrie(g_graceTimerTrie);
         CloseHandle(g_graceTimerTrie);
+    }
+}
+
+public ConVarChange_MaxPugPlayers(Handle:cvar, const String:oldValue[], const String:newValue[])
+{
+    new val = StringToInt(newValue);
+    if ((val % 2) != 0)
+    {
+        SetConVarInt(cvar, val);
     }
 }
 
@@ -680,23 +697,8 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
 
 ClearTeams()
 {
-    if (g_ctPlayers == INVALID_HANDLE)
-    {
-        g_ctPlayers = CreateArray(STEAMID_LEN);
-    }
-    else
-    {
-        ClearArray(g_ctPlayers);
-    }
-
-    if (g_tPlayers == INVALID_HANDLE)
-    {
-        g_tPlayers = CreateArray(STEAMID_LEN);
-    }
-    else
-    {
-        ClearArray(g_tPlayers);
-    }
+    ClearTrie(g_playerTeamTrie);
+    ClearArray(g_playerTeamKeys);
 }
 
 /**
@@ -706,6 +708,9 @@ LockAndClearTeams()
 {
     g_lockTeams = true;
     ClearTeams();
+    new slots = GetConVarInt(g_cvar_maxPugPlayers) / 2;
+    g_ctSlots = slots;
+    g_tSlots = slots;
 }
 
 /**
@@ -729,7 +734,9 @@ PickTeams()
     LockAndClearTeams();
     ForceAllSpec();
     ForcePlayerTeam(g_ctCaptain, CS_TEAM_CT);
+    g_ctSlots--;
     ForcePlayerTeam(g_tCaptain, CS_TEAM_T);
+    g_tSlots--;
     if (g_teamPickMenu != INVALID_HANDLE)
     {
         CloseHandle(g_teamPickMenu);
@@ -743,8 +750,6 @@ PickTeams()
  */
 public Action:Timer_PickTeams(Handle:timer)
 {
-    static counter = 0;
-
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
         return Plugin_Stop;
@@ -753,9 +758,7 @@ public Action:Timer_PickTeams(Handle:timer)
     if (g_teamPickMenu != INVALID_HANDLE)
         return Plugin_Continue;
 
-    new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
-
-    if (GetTeamClientCount(CS_TEAM_CT) + GetTeamClientCount(CS_TEAM_T) == neededCount)
+    if (g_ctSlots == 0 && g_tSlots == 0)
     {
         PrintToChatAll("[GP] Done picking teams.");
 
@@ -775,17 +778,12 @@ public Action:Timer_PickTeams(Handle:timer)
     }
     else
     {
+        decl String:captainName[64];
+        GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
+        PrintToChatAll("[GP] %s's pick...", captainName);
         g_teamPickMenu = BuildPickMenu();
         DisplayMenu(g_teamPickMenu, g_captains[g_whosePick], 0);
     }
-
-    if (counter % 15 == 0)
-    {
-        decl String:captainName[64];
-        GetClientName(g_captains[g_whosePick], captainName, sizeof(captainName));
-        PrintCenterTextAll("[GP] %s's pick...", captainName);
-    }
-    counter++;
 
     return Plugin_Continue;
 }
@@ -836,10 +834,19 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
             decl String:pickName[64];
             GetMenuItem(menu, param2, pickName, sizeof(pickName));
             new pick = FindClientByName(pickName, true);
+            new team = GetClientTeam(param1);
             decl String:captainName[64];
             GetClientName(param1, captainName, sizeof(captainName));
             PrintToChatAll("[GP] %s picks %s.", captainName, pickName);
-            ForcePlayerTeam(pick, GetClientTeam(param1));
+            ForcePlayerTeam(pick, team);
+            if (team == CS_TEAM_CT)
+            {
+                g_ctSlots--;
+            }
+            else
+            {
+                g_tSlots--;
+            }
             g_whosePick ^= 1;
         }
         case MenuAction_End:
@@ -855,9 +862,6 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
  */
 ForcePlayerTeam(client, team)
 {
-    assert(g_ctPlayers != INVALID_HANDLE)
-    assert(g_tPlayers != INVALID_HANDLE)
-
     if (IsValidPlayer(client))
     {
         decl String:steamId[STEAMID_LEN];
@@ -868,45 +872,12 @@ ForcePlayerTeam(client, team)
             team = CS_TEAM_SPECTATOR;
         }
 
-        if (team == CS_TEAM_CT)
+        new index = FindStringInArray(g_playerTeamKeys, steamId);
+        if (index < 0)
         {
-            new index = FindStringInArray(g_ctPlayers, steamId);
-            if (index < 0)
-            {
-                PushArrayString(g_ctPlayers, steamId);
-            }
-            index = FindStringInArray(g_tPlayers, steamId);
-            if (index >= 0)
-            {
-                RemoveFromArray(g_tPlayers, index);
-            }
+            PushArrayString(g_playerTeamKeys, steamId);
         }
-        else if (team == CS_TEAM_T)
-        {
-            new index = FindStringInArray(g_ctPlayers, steamId);
-            if (index >= 0)
-            {
-                RemoveFromArray(g_ctPlayers, index);
-            }
-            index = FindStringInArray(g_tPlayers, steamId);
-            if (index < 0)
-            {
-                PushArrayString(g_tPlayers, steamId);
-            }
-        }
-        else
-        {
-            new index = FindStringInArray(g_ctPlayers, steamId);
-            if (index >= 0)
-            {
-                RemoveFromArray(g_ctPlayers, index);
-            }
-            index = FindStringInArray(g_tPlayers, steamId);
-            if (index >= 0)
-            {
-                RemoveFromArray(g_ctPlayers, index);
-            }
-        }
+        SetTrieValue(g_playerTeamTrie, steamId, team);
 
         ChangeClientTeam(client, team);
     }
@@ -922,7 +893,7 @@ ForceAllSpec()
     {
         if (IsValidPlayer(i))
         {
-            ChangeClientTeam(i, CS_TEAM_SPECTATOR);
+            ForcePlayerTeam(i, CS_TEAM_SPECTATOR);
         }
     }
 }
@@ -1270,8 +1241,13 @@ public Action:Command_Ready(client, args)
             decl String:steamId[STEAMID_LEN];
             GetClientAuthString(client, steamId, sizeof(steamId));
 
-            if (FindStringInArray(g_ctPlayers, steamId) < 0
-                && FindStringInArray(g_tPlayers, steamId) < 0)
+            decl team;
+            if (!GetTrieValue(g_playerTeamTrie, steamId, team))
+            {
+                // I don't think it's possible to get here, but just in case
+                PrintToChat(client, "[GP] You can't ready up right now.");
+            }
+            else if (team != CS_TEAM_T && team != CS_TEAM_CT)
             {
                 // Don't let non-assigned players ready up
                 PrintToChat(client, "[GP] You can't ready up right now.");
@@ -1434,41 +1410,50 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         decl String:steamId[STEAMID_LEN];
         GetClientAuthString(client, steamId, sizeof(steamId));
 
-        if (FindStringInArray(g_ctPlayers, steamId) >= 0)
+        decl assignedTeam;
+        if (GetTrieValue(g_playerTeamTrie, steamId, assignedTeam))
         {
-            if (team == CS_TEAM_T)
+            // player is assigned to a match team
+            if (assignedTeam == CS_TEAM_CT)
             {
                 PrintToChat(client, "[GP] You are assigned to the CT team.");
+                ChangeClientTeam(client, CS_TEAM_CT);
             }
-            ChangeClientTeam(client, CS_TEAM_CT);
-        }
-        else if (FindStringInArray(g_tPlayers, steamId) >= 0)
-        {
-            if (team == CS_TEAM_CT)
+            else if (assignedTeam == CS_TEAM_T)
             {
                 PrintToChat(client, "[GP] You are assigned to the T team.");
-            }
-            ChangeClientTeam(client, CS_TEAM_T);
-        }
-        else
-        {
-            if (team == CS_TEAM_CT && g_ctSlots > 0)
-            {
-                g_ctSlots--;
-                ForcePlayerTeam(client, CS_TEAM_CT);
-            }
-            else if (team == CS_TEAM_T && g_tSlots > 0)
-            {
-                g_tSlots--;
-                ForcePlayerTeam(client, CS_TEAM_T);
+                ChangeClientTeam(client, CS_TEAM_T);
             }
             else
             {
-                PrintToChat(client, "[GP] Teams are full right now.");
-                ChangeClientTeam(client, CS_TEAM_SPECTATOR);
+                // player is not assigned to a match team, see if they are allowed
+                // to join the requested team
+                if (team == CS_TEAM_CT && g_ctSlots > 0)
+                {
+                    g_ctSlots--;
+                    ForcePlayerTeam(client, CS_TEAM_CT);
+                }
+                else if (team == CS_TEAM_T && g_tSlots > 0)
+                {
+                    g_tSlots--;
+                    ForcePlayerTeam(client, CS_TEAM_T);
+                }
+                else
+                {
+                    PrintToChat(client, "[GP] Teams are full right now.");
+                    ForcePlayerTeam(client, CS_TEAM_SPECTATOR);
+                }
             }
+            return Plugin_Handled;
         }
-        return Plugin_Handled;
+        else
+        {
+            // we haven't seen this player yet. temporarily assign them to spectate
+            // then try again
+            SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_SPECTATOR);
+            PushArrayString(g_playerTeamKeys, steamId);
+            return Command_Jointeam(client, command, argc);
+        }
     }
     else
     {
@@ -1481,13 +1466,20 @@ public Action:Command_Jointeam(client, const String:command[], argc)
  */
 public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    if (g_lockTeams)
+    for (new i = 0; i < GetArraySize(g_playerTeamKeys); i++)
     {
-        new Handle:tmp = CloneArray(g_ctPlayers);
-        CloseHandle(g_ctPlayers);
-        g_ctPlayers = CloneArray(g_tPlayers);
-        CloseHandle(g_tPlayers);
-        g_tPlayers = tmp;
+        decl String:steamId[STEAMID_LEN];
+        GetArrayString(g_playerTeamKeys, i, steamId, sizeof(steamId));
+        decl team;
+        GetTrieValue(g_playerTeamTrie, steamId, team);
+        if (team == CS_TEAM_CT)
+        {
+            SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_T);
+        }
+        else if (team == CS_TEAM_T)
+        {
+            SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_CT);
+        }
     }
 
     return Plugin_Continue;
@@ -1550,23 +1542,20 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
     }
     else
     {
-        PrintToChatAll("\x01\x0b\x02[GP]: %s has abandoned the match and will receive a 30 minute ban.",
-                       playerName);
-        BanIdentity(steamId, 30, BANFLAG_AUTHID, "Abandoned a competitive match");
+        PrintToChatAll("\x01\x0b\x02[GP]: %s has abandoned the match.", playerName);
 
-        new index = FindStringInArray(g_ctPlayers, steamId);
+        new index = FindStringInArray(g_playerTeamKeys, steamId);
         if (index >= 0)
         {
-            RemoveFromArray(g_ctPlayers, index);
-            g_ctSlots++;
-            PrintToChatAll("[GP]: The CT team now has an open slot. A spectator may join the CT team.");
-        }
-        else 
-        {
-            index = FindStringInArray(g_tPlayers, steamId);
-            if (index >= 0)
+            decl team;
+            GetTrieValue(g_playerTeamTrie, steamId, team);
+            if (team == CS_TEAM_CT)
             {
-                RemoveFromArray(g_tPlayers, index);
+                g_ctSlots++;
+                PrintToChatAll("[GP]: The CT team now has an open slot. A spectator may join the CT team.");
+            }
+            else if (team == CS_TEAM_T)
+            {
                 g_tSlots++;
                 PrintToChatAll("[GP]: The T team now has an open slot. A spectator may join the T team.");
             }
@@ -1624,12 +1613,6 @@ public Action:Event_PlayerDisconnect(
              */
             if (g_playerReady[client])
             {
-                if (StrEqual(reason, "Disconnect by user"))
-                {
-                    PrintToChatAll("\x01\x0b\x02[GP]: %s (%s) will receive a 30 minute ban for leaving after readying up.",
-                                   playerName, steamId);
-                    BanClient(client, 30, BANFLAG_AUTHID, "Abandoned match after readying up.");
-                }
                 PrintToChatAll("[GP]: Restarting warmup...");
                 if (IsVoteInProgress())
                     CancelVote();
@@ -1645,8 +1628,9 @@ public Action:Event_PlayerDisconnect(
              * allow any replacement player from spec to fill in.
              */
             g_playerReady[client] = false;
-            if (FindStringInArray(g_ctPlayers, steamId) >= 0
-                || FindStringInArray(g_tPlayers, steamId) >= 0)
+            decl team;
+            if (GetTrieValue(g_playerTeamTrie, steamId, team)
+                && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
@@ -1658,8 +1642,9 @@ public Action:Event_PlayerDisconnect(
              * forfeit, play man down, or allow any replacement player from
              * spec to fill in.
              */
-            if (FindStringInArray(g_ctPlayers, steamId) >= 0
-                || FindStringInArray(g_tPlayers, steamId) >= 0)
+            decl team;
+            if (GetTrieValue(g_playerTeamTrie, steamId, team)
+                && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
