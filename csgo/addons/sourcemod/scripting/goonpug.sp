@@ -144,7 +144,7 @@ public OnPluginStart()
     AddCommandListener(Command_Say, "say_team");
 
     // Hook events
-    HookEvent("cs_intermission", Event_CsIntermission);
+    HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
@@ -1648,7 +1648,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 /**
  * Updates our locked teams at halftime
  */
-public Action:Event_CsIntermission(Handle:event, const String:name[], bool:dontBroadcast)
+public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
     for (new i = 0; i < GetArraySize(g_playerTeamKeys); i++)
     {
