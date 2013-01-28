@@ -591,7 +591,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
         for (new i = 0; i < secondPlaceTotal; i++)
         {
             decl String:name[64];
-            GetMenuItem(menu, GetArrayCell(firstPlaceWinners, i), name, sizeof(name));
+            GetMenuItem(menu, GetArrayCell(secondPlaceWinners, i), name, sizeof(name));
             if (secondPlaceTotal == 1)
             {
                 PrintToChatAll("[GP] 2nd place: %s received %d votes.", name, secondPlaceVotes);
@@ -1602,6 +1602,11 @@ public Action:Command_Jointeam(client, const String:command[], argc)
             {
                 PrintToChat(client, "[GP] You are assigned to the T team.");
                 ChangeClientTeam(client, CS_TEAM_T);
+            }
+            else if (g_matchState == MS_PICK_TEAMS)
+            {
+                PrintToChat(client, "[GP] You must stay spec until you are picked for a team.");
+                ChangeClientTeam(client, CS_TEAM_SPECTATOR);
             }
             else
             {
