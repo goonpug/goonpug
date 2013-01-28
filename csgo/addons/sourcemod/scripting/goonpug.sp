@@ -331,8 +331,8 @@ Handle:BuildMapVoteMenu()
     for (new i = GetArraySize(g_pugMapList); i > 0; i--)
     {
         decl String:mapname[64];
-        new index = GetRandomInt(0, i);
-        GetArrayString(g_pugMapList, index, mapname, sizeof(mapname));
+        new index = GetRandomInt(0, i - 1);
+        GetArrayString(maplist, index, mapname, sizeof(mapname));
         if (IsMapValid(mapname))
         {
             AddMenuItem(menu, mapname, mapname);
@@ -531,11 +531,27 @@ public VoteHandler_CaptainsVote(Handle:menu,
         }
     }
 
+    PrintToChatAll("[GP] Vote Results:");
     new firstPlaceTotal = GetArraySize(firstPlaceWinners);
+    for (new i = 0; i < firstPlaceTotal; i++)
+    {
+        decl String:name[64];
+        GetMenuItem(menu, GetArrayCell(firstPlaceWinners, i), name, sizeof(name));
+        if (firstPlaceTotal == 1)
+        {
+            PrintToChatAll("[GP] 1st place: %s received %d votes.", name, firstPlaceVotes);
+        }
+        else
+        {
+            PrintToChatAll("[GP] 1st place (tie): %s received %d votes.", name, firstPlaceVotes);
+        }
+    }
+
     assert (firstPlaceTotal > 0)
     new captainIndex[2];
-    if (firstPlaceTotal > 2)
+    if (firstPlaceTotal > 1)
     {
+        // If there is a tie for first, pick 2 randomly
         new rand1 = GetRandomInt(0, firstPlaceTotal - 1);
         decl rand2;
         do
@@ -546,35 +562,46 @@ public VoteHandler_CaptainsVote(Handle:menu,
         captainIndex[0] = GetArrayCell(firstPlaceWinners, rand1);
         captainIndex[1] = GetArrayCell(firstPlaceWinners, rand2);
     }
-    else if (firstPlaceTotal == 2)
+    else
     {
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-        captainIndex[1] = GetArrayCell(firstPlaceWinners, 1);
-    }
-    else if (firstPlaceTotal == 1)
-    {
-        captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
+
         new Handle:secondPlaceWinners = CreateArray();
         new secondPlaceVotes = 0;
         for (new i = 0; i < numItems; i++)
         {
-            if (i == captainIndex[0])
+            if (itemInfo[i][VOTEINFO_ITEM_VOTES] == firstPlaceVotes)
             {
-                // Skip the first place index
                 continue;
             }
-            if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes)
+            else if (itemInfo[i][VOTEINFO_ITEM_VOTES] > secondPlaceVotes)
             {
                 secondPlaceVotes = itemInfo[i][VOTEINFO_ITEM_VOTES];
                 ClearArray(secondPlaceWinners);
                 PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
             }
-            else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == firstPlaceVotes)
+            else if (itemInfo[i][VOTEINFO_ITEM_VOTES] == secondPlaceVotes)
             {
                 // This item is in a tie with the current first place
                 PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
             }
         }
+
+        new secondPlaceTotal = GetArraySize(secondPlaceWinners);
+        for (new i = 0; i < secondPlaceTotal; i++)
+        {
+            decl String:name[64];
+            GetMenuItem(menu, GetArrayCell(firstPlaceWinners, i), name, sizeof(name));
+            if (secondPlaceTotal == 1)
+            {
+                PrintToChatAll("[GP] 2nd place: %s received %d votes.", name, secondPlaceVotes);
+            }
+            else
+            {
+                PrintToChatAll("[GP] 2nd place (tie): %s received %d votes.", name, secondPlaceVotes);
+            }
+        }
+
         captainIndex[1] = GetArrayCell(secondPlaceWinners, GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1));
         CloseHandle(secondPlaceWinners);
     }
