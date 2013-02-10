@@ -136,6 +136,7 @@ public OnPluginStart()
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
     RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP, "Locks teams");
+    RegAdminCmd("sm_kickunready", Command_KickUnready, ADMFLAG_KICK, "Kicks unready players");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -944,7 +945,6 @@ ForcePlayerTeam(client, team)
         ChangeClientTeam(client, team);
     }
 }
-
 /**
  * Force all players into spectator team
  */
@@ -1446,6 +1446,31 @@ public Action:Command_Forfeit(client, args)
 
     VoteMenu(menu, clients, clientCount, 30);
 
+    return Plugin_Handled;
+}
+
+/**
+ *Kicks one "random" unready player
+ **/
+public Action:Command_KickUnready(client, args)
+{
+    if (!NeedReadyUp())
+    {
+        PrintToChat(client, "[GP] Nobody still needs to ready up");
+        return Plugin_Handled;
+    }
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !g_playerReady[i])
+        {
+            decl String:name[64];
+            GetClientName(i, name, sizeof(name));
+            KickClient(i, "You have been kicked by an admin for being unready.");
+            PrintToChatAll("[GP] %s has been kicked for being unready",
+                           name);
+            return Plugin_Handled;
+        }
+    }
     return Plugin_Handled;
 }
 
