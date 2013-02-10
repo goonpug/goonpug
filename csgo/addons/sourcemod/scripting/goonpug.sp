@@ -1470,6 +1470,10 @@ public Action:Command_KickUnready(client, args)
                            name);
             return Plugin_Handled;
         }
+        else
+        {
+            PrintToChat(client, "[GP] There were no valid/unready players to kick");
+        }
     }
     return Plugin_Handled;
 }
