@@ -1,4 +1,5 @@
 workshop/125670041/de_cache
+workshop/126412033/de_contra_go
 workshop/125488374/de_dust2_se
 workshop/125499116/de_inferno_se
 workshop/125620805/de_mill
