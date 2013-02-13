@@ -132,6 +132,7 @@ public OnPluginStart()
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
+    RegConsoleCmd("sm_hp", Command_Hp, "Return all players current HP.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
@@ -148,6 +149,7 @@ public OnPluginStart()
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
+    HookEvent("player_hurt", Event_PlayerHurt);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 
     g_graceTimerTrie = CreateTrie();
@@ -1447,6 +1449,31 @@ public Action:Command_Forfeit(client, args)
     VoteMenu(menu, clients, clientCount, 30);
 
     return Plugin_Handled;
+}
+
+/**
+ *Displays all players current HP
+ **/
+public Action:Command_Hp(client, args)
+{
+    new OurTeam = GetClientTeam(client);
+    for (new i=1; i<=MAXPLAYERS; i++)
+    {
+        if (IsValidPlayer(i) && GetClientTeam(i) == OurTeam)
+        {
+            new String:playerName[64] = GetClientName(i);
+            new playerHp = GetClientHealth(i);
+            new playerArmor = GetClientArmor(i);
+            PrintToChat(client, "[GP] %s has %d HP and %d/100AP", playerName, playerHp, playerArmor);
+        }
+        else if (IsValidPlayer(i) && GetClientTeam(i) != OurTeam)
+        {
+            new String:otherPlayerName[64] = GetClientName(i);
+            new otherPlayerHp = GetClientHealth(i);
+            new otherPlayerArmor = GetClientArmor(i);
+            PrintToChat(client, "[GP] %s has %d HP and %d/100AP", otherPlayerName, otherPlayerHp, otherPlayerArmor);
+        }
+    }
 }
 
 /**
