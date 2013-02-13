@@ -3,5 +3,12 @@
 language: c
 compiler: gcc
 
+# don't do anything for now
+script: ""
+
 before_install:
     - git submodule update --init --recursive
+
+branches:
+    only:
+        - master
