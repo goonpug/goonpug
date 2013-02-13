@@ -1594,6 +1594,10 @@ public Action:Command_Say(client, const String:command[], argc)
     {
         return Command_Ready(client, 0);
     }
+    if (StrEqual(param, ".hp"))
+    {
+        return Command_Hp(client, 0);
+    }
     else
     {
         return Plugin_Continue;
