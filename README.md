@@ -1,13 +1,11 @@
 GoonPUG
 =======
 
-[![Build Status](https://travis-ci.org/pmrowla/goonpug.png)](https://travis-ci.org/pmrowla/goonpug/)
-
 CS:GO competitive PUG plugin
 
 GoonPUG consists of two parts:
 
-1. The Server plugin
+1. The Sourcemod PUG plugin
 
 2. The stats tracking daemon and web application (optional)
 
@@ -46,7 +44,7 @@ will be ranked by an RWS score.
 Plugin Installation
 -------------------
 
-1. Ensure that [Metamod 1.9](http://www.sourcemm.net) is installed and properly configured on your server.
+1. Ensure that [SourceMod](http://www.sourcemod.net) is installed and properly configured on your server.
 
 2. Extract the contents of the goonpug\_\<version\>.zip file into your csgo
    server folder. Everything is properly organized underneath the standard

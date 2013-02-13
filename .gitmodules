@@ -1,6 +1,0 @@
-[submodule "hl2sdk-csgo"]
-	path = hl2sdk-csgo
-	url = git://github.com/pmrowla/hl2sdk-csgo.git
-[submodule "mmsource-central"]
-	path = mmsource-central
-	url = git://github.com/pmrowla/mmsource-central.git

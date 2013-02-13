@@ -1,7 +1,0 @@
-# Travis-CI config for GoonPUG
-
-language: c
-compiler: gcc
-
-before_install:
-    - git submodule update --init --recursive
