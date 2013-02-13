@@ -12,3 +12,12 @@ before_install:
 branches:
     only:
         - master
+
+# Use IRC notifications instead of email
+notifications:
+    email: false
+    irc:
+        channels:
+            - "irc.synirc.net#goonpug"
+        on_success: always
+        on_failure: always
