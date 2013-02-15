@@ -61,6 +61,7 @@ enum MatchState
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnable = INVALID_HANDLE;
+new Handle:g_cvar_hpEnable = INVALID_HANDLE;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -124,6 +125,7 @@ public OnPluginStart()
 	g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
 	"Use deathmatch respawning during warmup rounds",
 	FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+	g_cvar_hpEnable = CreateConVar("gp_hpenable", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
 	g_cvar_tvEnable = FindConVar("tv_enable");
 	
 	new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
@@ -1467,6 +1469,9 @@ public Action:Command_Forfeit(client, args)
 **/
 public Action:Command_Hp(client, args)
 {
+    new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
+    if (!IsPlayerAlive(client) && hpCvarEnabled != 0)
+    {
 	for (new i=1; i<=MaxClients; i++)
 	{
 		if (IsValidPlayer(i) && !IsFakeClient(i))
@@ -1474,7 +1479,8 @@ public Action:Command_Hp(client, args)
 			PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
 		}
 	}
-	return Plugin_Handled;
+    }
+    return Plugin_Handled;
 }
 
 /**
@@ -1745,13 +1751,17 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
 */
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
+        new userid = GetEventInt(event, "userid");
+        new client = GetClientOfUserId(userid);
 	new dm = GetConVarInt(g_cvar_idleDeathmatch);
 	if (NeedReadyUp() && dm != 0)
 	{
-		new userid = GetEventInt(event, "userid");
-		new client = GetClientOfUserId(userid);
 		CreateTimer(2.5, Timer_RespawnPlayer, client);
 	}
+        if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client) && g_matchState == MS_LIVE)
+        {
+            Command_Hp(client, 0);
+        }
 	return Plugin_Continue;
 }
 public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
