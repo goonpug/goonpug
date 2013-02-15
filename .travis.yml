@@ -9,6 +9,8 @@ before_install:
 branches:
     only:
         - master
+        
+script: make && make debug
 
 # Use IRC notifications instead of email
 notifications:
