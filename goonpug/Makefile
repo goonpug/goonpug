@@ -10,6 +10,8 @@ ifndef BUILD_DIR
 	BUILD_DIR = ../build
 endif
 
+VERSION_HEADER = version.h
+
 CFLAGS += -Wall
 OPT_FLAGS = -O3 -funroll-loops -pipe
 GCC4_FLAGS = -fvisibility=hidden -fvisibility-inlines-hidden
@@ -97,7 +99,7 @@ endif
 
 BIN_DIR = $(BUILD_DIR)/Release.$(ENGINE)
 
-all: builddir hl2lib goonpug
+all: gitversion builddir hl2lib goonpug
 
 builddir:
 	mkdir -p $(BIN_DIR)
@@ -127,3 +129,15 @@ clean:
 	rm -rf $(BIN_DIR)/*.o
 	rm -rf $(BIN_DIR)/$(BINARY)
 
+.PHONY: gitversion
+gitversion:
+	@(GOONPUG_VERSION="" ; \
+		[ -e "$(VERSION_HEADER)" ] && GOONPUG_VERSION=$$(grep "define GOONPUG_VERSION " $(VERSION_HEADER) | cut -f3 -d" " | sed 's/"//g') ; \
+		GIT_VERSION=$$(git describe --always --tags --dirty) ;\
+		echo "GOONPUG_VERSION = $$GOONPUG_VERSION" ; \
+		echo "GIT_VERSION = $$GIT_VERSION" ; \
+		if [ "$${GIT_VERSION}" != "$${GOONPUG_VERSION}" ] ; then \
+			echo "Updating version.h." ; \
+			printf "#ifndef _VERSION_H_\n#define _VERSION_H_\n\n#define GOONPUG_VERSION \"$${GIT_VERSION}\"\n\n#endif /* ! _VERSION_H_ */\n" > $(VERSION_HEADER) ; \
+			$(MAKE) clean ; \
+		fi )
