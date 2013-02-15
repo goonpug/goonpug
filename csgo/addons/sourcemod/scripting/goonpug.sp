@@ -125,7 +125,7 @@ public OnPluginStart()
 	g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
 	"Use deathmatch respawning during warmup rounds",
 	FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
-	g_cvar_hpEnable = CreateConVar("gp_hpenable", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+	g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
 	g_cvar_tvEnable = FindConVar("tv_enable");
 	
 	new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
@@ -1470,15 +1470,16 @@ public Action:Command_Forfeit(client, args)
 public Action:Command_Hp(client, args)
 {
     new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
-    if (!IsPlayerAlive(client) && hpCvarEnabled != 0)
+    if (!IsPlayerAlive(client))
+    if (hpCvarEnabled != 0)
     {
-	for (new i=1; i<=MaxClients; i++)
-	{
-		if (IsValidPlayer(i) && !IsFakeClient(i))
-		{
-			PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
-		}
-	}
+        for (new i=1; i<=MaxClients; i++)
+        {
+                if (IsValidPlayer(i) && !IsFakeClient(i))
+                {
+                        PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+                }
+        }
     }
     return Plugin_Handled;
 }
@@ -1790,14 +1791,18 @@ public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroad
 	for (new i = 1; i < MaxClients; i++)
 	{
 		decl String:iName[32];
-		new currentHp = GetClientHealth(i);
-		new currentAp = GetClientHealth(i);
-		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
-		{
-			strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
-			playerHealthTable[i][Data_hp] = currentHp;
-			playerHealthTable[i][Data_ap] = currentAp;
-		}
+                if (IsClientInGame(i))
+                {
+                    new currentHp = GetClientHealth(i);
+                    new currentAp = GetClientHealth(i);
+                    GetClientName(i, iName, sizeof(iName));
+                    if (IsPlayerAlive(i) && !IsFakeClient(i))
+                    {
+                            strcopy(playerHealthTable[i][Data_playerName], 32, iName);
+                            playerHealthTable[i][Data_hp] = currentHp;
+                            playerHealthTable[i][Data_ap] = currentAp;
+                    }
+                }
 	}	
 	return Plugin_Continue;
 }
