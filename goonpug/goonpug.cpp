@@ -23,8 +23,13 @@
  * @author Peter Rowlands <peter@pmrowla.com>
  */
 
-#include <stdio.h>
+#include <cstdlib>
+#include <cstring>
+#include <cctype>
+#include <string>
+#include <map>
 
+#include "version.h"
 #include "goonpug.h"
 
 GoonpugPlugin g_goonpugPlugin;
@@ -39,47 +44,241 @@ IServerPluginCallbacks *vsp_callbacks = NULL;
 IPlayerInfoManager *playerinfomanager = NULL;
 ICvar *icvar = NULL;
 
+// Hook declarations
+
+// virtual void ClientCommand( edict_t *pEntity, const CCommand &args ) = 0;
+SH_DECL_HOOK2_void(IServerGameClients, ClientCommand, SH_NOATTRIB, 0, edict_t *, const CCommand &);
+
 /* 
  * Something like this is needed to register cvars/CON_COMMANDs.
  */
 class BaseAccessor : public IConCommandBaseAccessor
 {
 public:
-	bool RegisterConCommandBase(ConCommandBase *pCommandBase)
-	{
-		/* Always call META_REGCVAR instead of going through the engine. */
-		return META_REGCVAR(pCommandBase);
-	}
+    bool RegisterConCommandBase(ConCommandBase *pCommandBase)
+    {
+        /* Always call META_REGCVAR instead of going through the engine. */
+        return META_REGCVAR(pCommandBase);
+    }
 } s_BaseAccessor;
 
 bool GoonpugPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen, bool late)
 {
     PLUGIN_SAVEVARS();
 
-	GET_V_IFACE_CURRENT(GetEngineFactory, engine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
-	GET_V_IFACE_CURRENT(GetEngineFactory, gameevents, IGameEventManager2, INTERFACEVERSION_GAMEEVENTSMANAGER2);
-	GET_V_IFACE_CURRENT(GetEngineFactory, helpers, IServerPluginHelpers, INTERFACEVERSION_ISERVERPLUGINHELPERS);
-	GET_V_IFACE_CURRENT(GetEngineFactory, icvar, ICvar, CVAR_INTERFACE_VERSION);
-	GET_V_IFACE_ANY(GetServerFactory, server, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL);
-	GET_V_IFACE_ANY(GetServerFactory, gameclients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
-	GET_V_IFACE_ANY(GetServerFactory, playerinfomanager, IPlayerInfoManager, INTERFACEVERSION_PLAYERINFOMANAGER);
+    GET_V_IFACE_CURRENT(GetEngineFactory, engine, IVEngineServer, INTERFACEVERSION_VENGINESERVER);
+    GET_V_IFACE_CURRENT(GetEngineFactory, gameevents, IGameEventManager2, INTERFACEVERSION_GAMEEVENTSMANAGER2);
+    GET_V_IFACE_CURRENT(GetEngineFactory, helpers, IServerPluginHelpers, INTERFACEVERSION_ISERVERPLUGINHELPERS);
+    GET_V_IFACE_CURRENT(GetEngineFactory, icvar, ICvar, CVAR_INTERFACE_VERSION);
+    GET_V_IFACE_ANY(GetServerFactory, server, IServerGameDLL, INTERFACEVERSION_SERVERGAMEDLL);
+    GET_V_IFACE_ANY(GetServerFactory, gameclients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
+    GET_V_IFACE_ANY(GetServerFactory, playerinfomanager, IPlayerInfoManager, INTERFACEVERSION_PLAYERINFOMANAGER);
 
-	META_LOG(g_PLAPI, "Starting plugin.");
+    META_LOG(g_PLAPI, "Starting plugin.");
 
-	/* Load the VSP listener.  This is usually needed for IServerPluginHelpers. */
-	if ((vsp_callbacks = ismm->GetVSPInfo(NULL)) == NULL)
-	{
-		ismm->AddListener(this, this);
-		ismm->EnableVSPListener();
-	}
+    /* Load the VSP listener.  This is usually needed for IServerPluginHelpers. */
+    if ((vsp_callbacks = ismm->GetVSPInfo(NULL)) == NULL)
+    {
+        ismm->AddListener(this, this);
+        ismm->EnableVSPListener();
+    }
 
-	g_pCVar = icvar;
-	ConVar_Register(0, &s_BaseAccessor);
+    g_pCVar = icvar;
+    ConVar_Register(0, &s_BaseAccessor);
 
-	return true;
+    // Load hooks
+    SH_ADD_HOOK_MEMFUNC(IServerGameClients, ClientCommand, gameclients, this, &GoonpugPlugin::Hook_ClientCommand, false);
+
+    return true;
 }
 
 bool GoonpugPlugin::Unload(char *error, size_t maxlen)
 {
-	return true;
+    // Unload hooks
+	SH_REMOVE_HOOK_MEMFUNC(IServerGameClients, ClientCommand, gameclients, this, &GoonpugPlugin::Hook_ClientCommand, false);
+    return true;
+}
+
+/**
+ * Call the handler for the specified command
+ */
+void GoonpugPlugin::Hook_ClientCommand(edict_t *pEntity, const CCommand &args)
+{
+	if (!pEntity || pEntity->IsFree())
+	{
+		return;
+	}
+
+	const char *cmd = args.Arg(0);
+	if (strcmp(cmd, "say") == 0 || strcmp(cmd, "say_team") == 0 || strcmp(cmd, "say2") == 0)
+	{
+        Command_Say(pEntity, args);
+	}
+	else if (strcmp(cmd, "jointeam") == 0)
+	{
+        Command_Jointeam(pEntity, args);
+	}
+}
+
+/**
+ * Command handler for "say"
+ */
+void GoonpugPlugin::Command_Say(edict_t *pEntity, const CCommand &args)
+{
+	const char *cmd = args.Arg(0);
+    size_t len = strlen(cmd);
+    char *tmp;
+
+    if (len < 2)
+    {
+        return;
+    }
+
+    switch (cmd[0])
+    {
+        case '.':
+        case '/':
+        case '!':
+            tmp = (char *)malloc(len);
+            if (tmp == NULL)
+            {
+                return;
+            }
+            strncpy(tmp, cmd + 1, len);
+            tmp[len - 1] = '\0';
+            for (size_t i = 0; i < len; i++)
+            {
+                tmp[i] = tolower(tmp[i]);
+            }
+
+            if (strcmp(tmp, "help") == 0)
+            {
+                ChatCommand_Help(pEntity, args);
+            }
+            else if (strcmp(tmp, "ready") == 0)
+            {
+                ChatCommand_Ready(pEntity, args);
+            }
+            else if (strcmp(tmp, "unready") == 0)
+            {
+                ChatCommand_Unready(pEntity, args);
+            }
+            else if (strcmp(tmp, "hp") == 0)
+            {
+                ChatCommand_Hp(pEntity, args);
+            }
+            else if (strcmp(tmp, "dmg") == 0)
+            {
+                ChatCommand_Dmg(pEntity, args);
+            }
+            else if (strcmp(tmp, "rank") == 0)
+            {
+                ChatCommand_Rank(pEntity, args);
+            }
+            else if (strcmp(tmp, "dbserver") == 0)
+            {
+                ChatCommand_Dbserver(pEntity, args);
+            }
+
+            free(tmp);
+            break;
+        default:
+            break;
+    }
+}
+
+/**
+ * Command handler for "jointeam"
+ */
+void GoonpugPlugin::Command_Jointeam(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".help"
+ */
+void GoonpugPlugin::ChatCommand_Help(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".ready"
+ */
+void GoonpugPlugin::ChatCommand_Ready(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".unready"
+ */
+void GoonpugPlugin::ChatCommand_Unready(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".hp"
+ */
+void GoonpugPlugin::ChatCommand_Hp(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".dmg"
+ */
+void GoonpugPlugin::ChatCommand_Dmg(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".rank"
+ */
+void GoonpugPlugin::ChatCommand_Rank(edict_t *pEntity, const CCommand &args)
+{
+}
+
+/**
+ * Chat handler for ".dbserver"
+ */
+void GoonpugPlugin::ChatCommand_Dbserver(edict_t *pEntity, const CCommand &args)
+{
+}
+
+const char *GoonpugPlugin::GetLicense()
+{
+    return "GPLv3";
+}
+
+const char *GoonpugPlugin::GetVersion()
+{
+    return GOONPUG_VERSION;
+}
+
+const char *GoonpugPlugin::GetDate()
+{
+    return __DATE__;
+}
+
+const char *GoonpugPlugin::GetLogTag()
+{
+    return "GoonPUG";
+}
+
+const char *GoonpugPlugin::GetAuthor()
+{
+    return "Peter Rowlands";
+}
+
+const char *GoonpugPlugin::GetDescription()
+{
+    return "CS:GO competitive PUG plugin";
+}
+
+const char *GoonpugPlugin::GetName()
+{
+    return "GoonPUG Plugin";
+}
+
+const char *GoonpugPlugin::GetURL()
+{
+    return "http://www.goonpug.com/";
 }
