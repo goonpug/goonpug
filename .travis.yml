@@ -1,0 +1,23 @@
+# Travis-CI config for GoonPUG
+
+language: c
+compiler: gcc
+
+# don't do anything for now
+script: ""
+
+before_install:
+    - git submodule update --init --recursive
+
+branches:
+    only:
+        - master
+
+# Use IRC notifications instead of email
+notifications:
+    email: false
+    irc:
+        channels:
+            - "irc.synirc.net#goonpug"
+        on_success: always
+        on_failure: always
