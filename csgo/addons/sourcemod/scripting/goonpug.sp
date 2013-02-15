@@ -1476,7 +1476,7 @@ public Action:Command_Hp(client, args)
 	{
 		if (IsValidPlayer(i) && !IsFakeClient(i))
 		{
-			PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+			PrintToChat(client, "[GP] %s has %d HP and %dAP remaining.", strcopy(playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_ap]);
 		}
 	}
     }
@@ -1792,8 +1792,10 @@ public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroad
 		decl String:iName[32];
 		new currentHp = GetClientHealth(i);
 		new currentAp = GetClientHealth(i);
+                GetClientName(i, iName, sizeof(iName);
 		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
 		{
+                        
 			strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
 			playerHealthTable[i][Data_hp] = currentHp;
 			playerHealthTable[i][Data_ap] = currentAp;
