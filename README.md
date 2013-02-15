@@ -1,7 +1,7 @@
 GoonPUG
 =======
 
-[![Build Status](https://travis-ci.org/pmrowla/goonpug.png)](https://travis-ci.org/pmrowla/goonpug/)
+[![Build Status](https://travis-ci.org/goonpug/goonpug.png)](https://travis-ci.org/goonpug/goonpug/)
 
 CS:GO competitive PUG plugin
 
