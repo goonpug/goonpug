@@ -1761,7 +1761,7 @@ public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroad
 	new currentHp = GetClientHealth(victimId);
 	new currentAp = GetClientHealth(victimId);
 	new victim = GetClientOfUserId(victimId);
-	new victimTeam = GetClientTeam(victim);
+
 	GetClientName(victim, victimName, sizeof(victimName));
 	
 	if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
@@ -1773,18 +1773,18 @@ public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroad
 	return Plugin_Continue;
 }
 /**
- * Callback for beginning of round, sets all player's health in the table to their current values
- **/
+* Callback for beginning of round, sets all player's health in the table to their current values
+**/
 public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 {
 	for (new i = 1; i < MaxClients; i++)
 	{
-		decl String:name[32];
+		decl String:iName[32];
 		new currentHp = GetClientHealth(i);
 		new currentAp = GetClientHealth(i);
-		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(victim))
+		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
 		{
-			strcopy(playerHealthTable[i][Data_playerName], sizeof(name), name);
+			strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
 			playerHealthTable[i][Data_hp] = currentHp;
 			playerHealthTable[i][Data_ap] = currentAp;
 		}
@@ -1792,13 +1792,13 @@ public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroad
 	return Plugin_Continue;
 }
 /**
- * Callback triggered at round end, zeroes out the player health table
- **/
+* Callback triggered at round end, zeroes out the player health table
+**/
 public Action:Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
 	for (new i = 0; i < MaxClients; i++)
 	{
-		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(victim))
+		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
 		{
 			playerHealthTable[i][Data_playerName] = 0;
 			playerHealthTable[i][Data_hp] = 0;
