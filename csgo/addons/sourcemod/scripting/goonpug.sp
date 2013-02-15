@@ -90,6 +90,15 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 // Grace timer handles
 new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
+// Structure for storing players health information
+enum playerHpDataStruct
+{
+    String:Data_playerName[32],
+    Data_hp,
+    Data_ap
+}
+//Indexes as so: playerHealthTable[client][teamindex][playerHpDataStruct]
+new playerHealthTable[MAXPLAYERS+1][2][playerHpDataStruct];
 /**
 * Public plugin info
 */
@@ -132,6 +141,7 @@ public OnPluginStart()
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
+    RegConsoleCmd("sm_hp", Command_Hp, "Return all players current HP.");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
@@ -148,6 +158,7 @@ public OnPluginStart()
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
+    HookEvent("player_hurt", Event_PlayerHurt);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 
     g_graceTimerTrie = CreateTrie();
@@ -1450,6 +1461,38 @@ public Action:Command_Forfeit(client, args)
 }
 
 /**
+ *Displays all players current HP
+ **/
+public Action:Command_Hp(client, args)
+{
+    for (new i=1; i<=MAXPLAYERS; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
+        {
+            PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][GetClientTeam(i)][Data_playerName], playerHealthTable[i][GetClientTeam(i)][Data_hp], playerHealthTable[i][GetClientTeam(i)][Data_hp]);
+        }
+    }
+    return Plugin_Handled;
+}
+public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    new victimId = GetEventInt(event, "userid");
+    decl String:victimName[32];
+    new currentHp = GetClientHealth(victimId);
+    new currentAp = GetClientHealth(victimId);
+    new victim = GetClientOfUserId(victimId);
+    new victimTeam = GetClientTeam(victim);
+    GetClientName(victim, victimName, sizeof(victimName));
+
+    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
+    {
+        strcopy(playerHealthTable[victim][victimTeam][Data_playerName], 32, victimName);
+        playerHealthTable[victim][victimTeam][Data_hp] = currentHp;
+        playerHealthTable[victim][victimTeam][Data_ap] = currentAp;
+    }
+}
+
+/**
  *Kicks one "random" unready player
  **/
 public Action:Command_KickUnready(client, args)
@@ -1566,6 +1609,10 @@ public Action:Command_Say(client, const String:command[], argc)
     if (StrEqual(param, ".ready"))
     {
         return Command_Ready(client, 0);
+    }
+    if (StrEqual(param, ".hp"))
+    {
+        return Command_Hp(client, 0);
     }
     else
     {
