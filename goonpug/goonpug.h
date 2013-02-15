@@ -39,10 +39,9 @@ public:
 	bool Pause(char *error, size_t maxlen);
 	bool Unpause(char *error, size_t maxlen);
 	void AllPluginsLoaded();
-public: // IMetamodListener
+    // IMetamodListener
 	void OnVSPListening(IServerPluginCallbacks *iface);
-public: // hooks
-	void Hook_ServerActivate(edict_t *pEdictList, int edictCount, int clientMax);
+    // Hooks
 	bool Hook_LevelInit(
         const char *pMapName,
 		char const *pMapEntities,
@@ -50,7 +49,6 @@ public: // hooks
 		char const *pLandmarkName,
 		bool loadGame,
 		bool background);
-	void Hook_GameFrame(bool simulating);
 	void Hook_LevelShutdown(void);
 	void Hook_ClientActive(edict_t *pEntity, bool bLoadGame);
 	void Hook_ClientDisconnect(edict_t *pEntity);
@@ -64,6 +62,20 @@ public: // hooks
 		char *reject,
 		int maxrejectlen);
 	void Hook_ClientCommand(edict_t *pEntity, const CCommand &args);
+private:
+    // Command handlers
+    void Command_Say(edict_t *pEntity, const CCommand &args);
+    void Command_Jointeam(edict_t *pEntity, const CCommand &args);
+    void Command_Lo3(edict_t *pEntity, const CCommand &args); 
+    void Command_Warmup(edict_t *pEntity, const CCommand &args); 
+    // Chat commands
+    void ChatCommand_Help(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Ready(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Unready(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Hp(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Dmg(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Rank(edict_t *pEntity, const CCommand &args); 
+    void ChatCommand_Dbserver(edict_t *pEntity, const CCommand &args); 
 public:
 	const char *GetAuthor();
 	const char *GetName();
