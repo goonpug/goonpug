@@ -1480,13 +1480,6 @@ public Action:Command_Hp(client, args)
                         PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
                 }
         }
-	for (new i=1; i<=MaxClients; i++)
-	{
-		if (IsValidPlayer(i) && !IsFakeClient(i))
-		{
-			PrintToChat(client, "[GP] %s has %d HP and %dAP remaining.", strcopy(playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_ap]);
-		}
-	}
     }
     return Plugin_Handled;
 }
@@ -1766,7 +1759,7 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 	{
 		CreateTimer(2.5, Timer_RespawnPlayer, client);
 	}
-        if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client) && g_matchState == MS_LIVE)
+        if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client))
         {
             Command_Hp(client, 0);
         }
@@ -1812,7 +1805,7 @@ public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroad
                 }
 		new currentHp = GetClientHealth(i);
 		new currentAp = GetClientHealth(i);
-                GetClientName(i, iName, sizeof(iName);
+                GetClientName(i, iName, sizeof(iName));
 		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
 		{
                         
@@ -1830,12 +1823,13 @@ public Action:Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadca
 {
 	for (new i = 0; i < MaxClients; i++)
 	{
-		if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
-		{
-			playerHealthTable[i][Data_playerName] = 0;
-			playerHealthTable[i][Data_hp] = 0;
-			playerHealthTable[i][Data_ap] = 0;
-		}
+            new client = GetClientOfUserId(i);
+            if (IsClientInGame(client) && IsPlayerAlive(client) && !IsFakeClient(client))
+            {
+                playerHealthTable[client][Data_playerName] = 0;
+                playerHealthTable[client][Data_hp] = 0;
+                playerHealthTable[client][Data_ap] = 0;
+            }
 	}	
 	return Plugin_Continue;
 }
