@@ -90,6 +90,15 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 // Grace timer handles
 new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
+// Structure for storing players health information
+enum playerHpDataStruct
+{
+    String:Data_playerName[32],
+    Data_hp,
+    Data_ap
+}
+//Indexes as so: playerHealthTable[client][teamindex][playerHpDataStruct]
+new playerHealthTable[MAXPLAYERS+1][2][playerHpDataStruct];
 /**
 * Public plugin info
 */
@@ -1456,23 +1465,30 @@ public Action:Command_Forfeit(client, args)
  **/
 public Action:Command_Hp(client, args)
 {
-    new OurTeam = GetClientTeam(client);
     for (new i=1; i<=MAXPLAYERS; i++)
     {
-        if (IsValidPlayer(i) && GetClientTeam(i) == OurTeam)
+        if (IsValidPlayer(i) && !IsFakeClient(i))
         {
-            new String:playerName[64] = GetClientName(i);
-            new playerHp = GetClientHealth(i);
-            new playerArmor = GetClientArmor(i);
-            PrintToChat(client, "[GP] %s has %d HP and %d/100AP", playerName, playerHp, playerArmor);
+            PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][GetClientTeam(i)][Data_playerName], playerHealthTable[i][GetClientTeam(i)][Data_hp], playerHealthTable[i][GetClientTeam(i)][Data_hp]);
         }
-        else if (IsValidPlayer(i) && GetClientTeam(i) != OurTeam)
-        {
-            new String:otherPlayerName[64] = GetClientName(i);
-            new otherPlayerHp = GetClientHealth(i);
-            new otherPlayerArmor = GetClientArmor(i);
-            PrintToChat(client, "[GP] %s has %d HP and %d/100AP", otherPlayerName, otherPlayerHp, otherPlayerArmor);
-        }
+    }
+    return Plugin_Handled;
+}
+public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    new victimId = GetEventInt(event, "userid");
+    decl String:victimName[32];
+    new currentHp = GetClientHealth(victimId);
+    new currentAp = GetClientHealth(victimId);
+    new victim = GetClientOfUserId(victimId);
+    new victimTeam = GetClientTeam(victim);
+    GetClientName(victim, victimName, sizeof(victimName));
+
+    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
+    {
+        strcopy(playerHealthTable[victim][victimTeam][Data_playerName], 32, victimName);
+        playerHealthTable[victim][victimTeam][Data_hp] = currentHp;
+        playerHealthTable[victim][victimTeam][Data_ap] = currentAp;
     }
 }
 
