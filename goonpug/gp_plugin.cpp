@@ -29,8 +29,8 @@
 #include <string>
 #include <map>
 
-#include "version.h"
-#include "goonpug.h"
+#include "gp_version.h"
+#include "gp_plugin.h"
 
 GoonpugPlugin g_goonpugPlugin;
 PLUGIN_EXPOSE(goonpug, g_goonpugPlugin);
@@ -153,31 +153,31 @@ void GoonpugPlugin::Command_Say(edict_t *pEntity, const CCommand &args)
 
             if (strcmp(tmp, "help") == 0)
             {
-                ChatCommand_Help(pEntity, args);
+                //ChatCommand_Help(pEntity, args);
             }
             else if (strcmp(tmp, "ready") == 0)
             {
-                ChatCommand_Ready(pEntity, args);
+                //ChatCommand_Ready(pEntity, args);
             }
             else if (strcmp(tmp, "unready") == 0)
             {
-                ChatCommand_Unready(pEntity, args);
+                //ChatCommand_Unready(pEntity, args);
             }
             else if (strcmp(tmp, "hp") == 0)
             {
-                ChatCommand_Hp(pEntity, args);
+                //ChatCommand_Hp(pEntity, args);
             }
             else if (strcmp(tmp, "dmg") == 0)
             {
-                ChatCommand_Dmg(pEntity, args);
+                //ChatCommand_Dmg(pEntity, args);
             }
             else if (strcmp(tmp, "rank") == 0)
             {
-                ChatCommand_Rank(pEntity, args);
+                //ChatCommand_Rank(pEntity, args);
             }
             else if (strcmp(tmp, "dbserver") == 0)
             {
-                ChatCommand_Dbserver(pEntity, args);
+                //ChatCommand_Dbserver(pEntity, args);
             }
 
             free(tmp);
@@ -191,55 +191,6 @@ void GoonpugPlugin::Command_Say(edict_t *pEntity, const CCommand &args)
  * Command handler for "jointeam"
  */
 void GoonpugPlugin::Command_Jointeam(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".help"
- */
-void GoonpugPlugin::ChatCommand_Help(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".ready"
- */
-void GoonpugPlugin::ChatCommand_Ready(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".unready"
- */
-void GoonpugPlugin::ChatCommand_Unready(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".hp"
- */
-void GoonpugPlugin::ChatCommand_Hp(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".dmg"
- */
-void GoonpugPlugin::ChatCommand_Dmg(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".rank"
- */
-void GoonpugPlugin::ChatCommand_Rank(edict_t *pEntity, const CCommand &args)
-{
-}
-
-/**
- * Chat handler for ".dbserver"
- */
-void GoonpugPlugin::ChatCommand_Dbserver(edict_t *pEntity, const CCommand &args)
 {
 }
 
