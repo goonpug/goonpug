@@ -18,13 +18,13 @@
  */
 /**
  * @file
- * @brief GoonPUG headers
+ * @brief GoonPUG plugin headers
  *
  * @author Peter Rowlands <peter@pmrowla.com>
  */
 
-#ifndef _GOONPUG_H_
-#define _GOONPUG_H_
+#ifndef _GOONPUG_PLUGIN_H_
+#define _GOONPUG_PLUGIN_H_
 
 #include <ISmmPlugin.h>
 #include <igameevents.h>
@@ -62,20 +62,14 @@ public:
 		char *reject,
 		int maxrejectlen);
 	void Hook_ClientCommand(edict_t *pEntity, const CCommand &args);
+
 private:
-    // Command handlers
+    // Console command handlers
     void Command_Say(edict_t *pEntity, const CCommand &args);
     void Command_Jointeam(edict_t *pEntity, const CCommand &args);
-    void Command_Lo3(edict_t *pEntity, const CCommand &args); 
-    void Command_Warmup(edict_t *pEntity, const CCommand &args); 
-    // Chat commands
-    void ChatCommand_Help(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Ready(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Unready(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Hp(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Dmg(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Rank(edict_t *pEntity, const CCommand &args); 
-    void ChatCommand_Dbserver(edict_t *pEntity, const CCommand &args); 
+    void Command_Lo3(edict_t *pEntity, const CCommand &args);
+    void Command_Warmup(edict_t *pEntity, const CCommand &args);
+
 public:
 	const char *GetAuthor();
 	const char *GetName();
@@ -87,8 +81,8 @@ public:
 	const char *GetLogTag();
 };
 
-extern GoonpugPlugin g_SamplePlugin;
+extern GoonpugPlugin g_goonpugPlugin;
 
 PLUGIN_GLOBALVARS();
 
-#endif // ! _GOONPUG_H_
+#endif // ! _GOONPUG_STATE_H_
