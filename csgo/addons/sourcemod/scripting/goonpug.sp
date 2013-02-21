@@ -1465,17 +1465,25 @@ public Action:Command_Forfeit(client, args)
 }
 
 /**
-*Displays all players current HP
+*Displays all players on the enemy team's current HP
 **/
 public Action:Command_Hp(client, args)
 {
     new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
-    if (!IsPlayerAlive(client))
     if (hpCvarEnabled != 0)
     {
+        // Figure out which team the client requesting is on so we can only
+        // display the health information of the opposite team
+        new team = GetClientTeam(client);
+        new enemyTeam = CS_TEAM_CT;
+        if (team == CS_TEAM_CT)
+        {
+            enemyTeam = CS_TEAM_T;
+        }
+
         for (new i=1; i<=MaxClients; i++)
         {
-                if (IsValidPlayer(i) && !IsFakeClient(i))
+                if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == enemyTeam)
                 {
                         PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
                 }
