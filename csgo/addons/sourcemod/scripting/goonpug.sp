@@ -43,24 +43,25 @@
 #define STEAMID_LEN 32
 
 /**
-* Match states
-*/
+ * Match states
+ */
 enum MatchState
 {
-MS_WARMUP = 0,
-MS_MAP_VOTE,
-MS_CAPTAINS_VOTE,
-MS_PICK_TEAMS,
-MS_PRE_LIVE,
-MS_LO3,
-MS_LIVE,
-MS_POST_MATCH,
+    MS_WARMUP = 0,
+    MS_MAP_VOTE,
+    MS_CAPTAINS_VOTE,
+    MS_PICK_TEAMS,
+    MS_PRE_LIVE,
+    MS_LO3,
+    MS_LIVE,
+    MS_POST_MATCH,
 };
 
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnable = INVALID_HANDLE;
+new Handle:g_cvar_hpEnable = INVALID_HANDLE;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -93,26 +94,26 @@ new Handle:g_graceTimerTrie = INVALID_HANDLE;
 // Structure for storing players health information
 enum playerHpDataStruct
 {
-    String:Data_playerName[32],
+    String:Data_playerName[33],
     Data_hp,
-    Data_ap
-}
-//Indexes as so: playerHealthTable[client][teamindex][playerHpDataStruct]
-new playerHealthTable[MAXPLAYERS+1][2][playerHpDataStruct];
+    Data_ap,
+};
+//Indexes as so: playerHealthTable[client][playerHpDataStruct]
+new playerHealthTable[MAXPLAYERS+1][playerHpDataStruct];
 /**
-* Public plugin info
-*/
+ * Public plugin info
+ */
 public Plugin:myinfo = {
-name = "GoonPUG",
-author = "astroman <peter@pmrowla.com>",
-description = "CS:GO PUG Plugin",
-version = GOONPUG_VERSION,
-url = "http://github.com/pmrowla/goonpug",
+    name = "GoonPUG",
+    author = "astroman <peter@pmrowla.com>",
+    description = "CS:GO PUG Plugin",
+    version = GOONPUG_VERSION,
+    url = "http://github.com/pmrowla/goonpug",
 }
 
 /**
-* Initialize GoonPUG
-*/
+ * Initialize GoonPUG
+ */
 public OnPluginStart()
 {
     // Set up GoonPUG convars
@@ -124,6 +125,7 @@ public OnPluginStart()
     g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
                                         "Use deathmatch respawning during warmup rounds",
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
 
     new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
@@ -155,6 +157,8 @@ public OnPluginStart()
     AddCommandListener(Command_Say, "say_team");
 
     // Hook events
+    HookEvent("round_start", Event_RoundStart);
+    HookEvent("round_end", Event_RoundEnd);
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
@@ -971,7 +975,7 @@ ForceAllSpec()
     }
 }
 
-    /**
+/**
  * Starts a timer to update a box with match information
  */
 StartMatchInfoText()
@@ -1461,35 +1465,31 @@ public Action:Command_Forfeit(client, args)
 }
 
 /**
- *Displays all players current HP
+ *Displays all players on the enemy team's current HP
  **/
 public Action:Command_Hp(client, args)
 {
-    for (new i=1; i<=MAXPLAYERS; i++)
+    new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
+    if (hpCvarEnabled != 0)
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        // Figure out which team the client requesting is on so we can only
+        // display the health information of the opposite team
+        new team = GetClientTeam(client);
+        new enemyTeam = CS_TEAM_CT;
+        if (team == CS_TEAM_CT)
         {
-            PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][GetClientTeam(i)][Data_playerName], playerHealthTable[i][GetClientTeam(i)][Data_hp], playerHealthTable[i][GetClientTeam(i)][Data_hp]);
+            enemyTeam = CS_TEAM_T;
+        }
+
+        for (new i=1; i<=MaxClients; i++)
+        {
+                if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == enemyTeam)
+                {
+                        PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+                }
         }
     }
     return Plugin_Handled;
-}
-public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
-{
-    new victimId = GetEventInt(event, "userid");
-    decl String:victimName[32];
-    new currentHp = GetClientHealth(victimId);
-    new currentAp = GetClientHealth(victimId);
-    new victim = GetClientOfUserId(victimId);
-    new victimTeam = GetClientTeam(victim);
-    GetClientName(victim, victimName, sizeof(victimName));
-
-    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
-    {
-        strcopy(playerHealthTable[victim][victimTeam][Data_playerName], 32, victimName);
-        playerHealthTable[victim][victimTeam][Data_hp] = currentHp;
-        playerHealthTable[victim][victimTeam][Data_ap] = currentAp;
-    }
 }
 
 /**
@@ -1510,7 +1510,7 @@ public Action:Command_KickUnready(client, args)
             GetClientName(i, name, sizeof(name));
             KickClient(i, "You have been kicked by an admin for being unready.");
             PrintToChatAll("[GP] %s has been kicked for being unready",
-                           name);
+            name);
             return Plugin_Handled;
         }
     }
@@ -1760,16 +1760,86 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
  */
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
+    new userid = GetEventInt(event, "userid");
+    new client = GetClientOfUserId(userid);
     new dm = GetConVarInt(g_cvar_idleDeathmatch);
     if (NeedReadyUp() && dm != 0)
     {
-        new userid = GetEventInt(event, "userid");
-        new client = GetClientOfUserId(userid);
         CreateTimer(2.5, Timer_RespawnPlayer, client);
+    }
+    if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client))
+    {
+        Command_Hp(client, 0);
     }
     return Plugin_Continue;
 }
+public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    new victimId = GetEventInt(event, "userid");
+    decl String:victimName[32];
+    new currentHp = GetClientHealth(victimId);
+    new currentAp = GetClientHealth(victimId);
+    new victim = GetClientOfUserId(victimId);
 
+    GetClientName(victim, victimName, sizeof(victimName));
+
+    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
+    {
+        strcopy(playerHealthTable[victim][Data_playerName], 32, victimName);
+        playerHealthTable[victim][Data_hp] = currentHp;
+        playerHealthTable[victim][Data_ap] = currentAp;
+    }
+    return Plugin_Continue;
+}
+/**
+ * Callback for beginning of round, sets all player's health in the table to their current values
+ **/
+public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    for (new i = 1; i < MaxClients; i++)
+    {
+        decl String:iName[32];
+        if (IsClientInGame(i))
+        {
+            new currentHp = GetClientHealth(i);
+            new currentAp = GetClientHealth(i);
+            GetClientName(i, iName, sizeof(iName));
+            if (IsPlayerAlive(i) && !IsFakeClient(i))
+            {
+                strcopy(playerHealthTable[i][Data_playerName], 32, iName);
+                playerHealthTable[i][Data_hp] = currentHp;
+                playerHealthTable[i][Data_ap] = currentAp;
+            }
+        }
+        new currentHp = GetClientHealth(i);
+        new currentAp = GetClientHealth(i);
+        GetClientName(i, iName, sizeof(iName));
+        if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
+        {
+            strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
+            playerHealthTable[i][Data_hp] = currentHp;
+            playerHealthTable[i][Data_ap] = currentAp;
+        }
+    }   
+    return Plugin_Continue;
+}
+/**
+ * Callback triggered at round end, zeroes out the player health table
+ **/
+public Action:Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    for (new i = 0; i < MaxClients; i++)
+    {
+            new client = GetClientOfUserId(i);
+            if (IsClientInGame(client) && IsPlayerAlive(client) && !IsFakeClient(client))
+            {
+                playerHealthTable[client][Data_playerName] = 0;
+                playerHealthTable[client][Data_hp] = 0;
+                playerHealthTable[client][Data_ap] = 0;
+            }
+    }   
+    return Plugin_Continue;
+}
 /**
  * Respawns the specified player
  */
@@ -1795,7 +1865,7 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
     if (count < 3)
     {
         PrintToChatAll("\x01\x0b\x02[GP]: %s has %d minutes to reconnect.",
-                       playerName, (3 - count));
+        playerName, (3 - count));
         return Plugin_Continue;
     }
     else
@@ -1828,7 +1898,7 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
 StartGraceTimer(const String:playerName[], const String:steamId[])
 {
     PrintToChatAll("\x01\x0b\x02[GP]: %s has 3 minutes to reconnect.",
-                   playerName);
+    playerName);
     new Handle:pack;
     new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE | TIMER_FLAG_NO_MAPCHANGE);
     WritePackString(pack, playerName);
@@ -1840,9 +1910,9 @@ StartGraceTimer(const String:playerName[], const String:steamId[])
  * Handle player disconnections
  */
 public Action:Event_PlayerDisconnect(
-    Handle:event,
-    const String:name[],
-    bool:dontBroadcast)
+Handle:event,
+const String:name[],
+bool:dontBroadcast)
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
@@ -1866,9 +1936,9 @@ public Action:Event_PlayerDisconnect(
         case MS_MAP_VOTE, MS_CAPTAINS_VOTE, MS_PICK_TEAMS:
         {
             /*
-             * if a readied player drops in these states, just go back to
-             * warmup and start over
-             */
+            * if a readied player drops in these states, just go back to
+            * warmup and start over
+            */
             if (g_playerReady[client])
             {
                 PrintToChatAll("[GP]: Restarting warmup...");
@@ -1881,14 +1951,14 @@ public Action:Event_PlayerDisconnect(
         case MS_PRE_LIVE, MS_LO3:
         {
             /*
-             * If the player was involved in the match, start a reconnect grace
-             * timer. After which, hold a vote to forfeit, play man down, or
-             * allow any replacement player from spec to fill in.
-             */
+            * If the player was involved in the match, start a reconnect grace
+            * timer. After which, hold a vote to forfeit, play man down, or
+            * allow any replacement player from spec to fill in.
+            */
             g_playerReady[client] = false;
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-                && (team == CS_TEAM_CT || team == CS_TEAM_T))
+            && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
@@ -1896,13 +1966,13 @@ public Action:Event_PlayerDisconnect(
         case MS_LIVE:
         {
             /*
-             * Start a reconnect grace timer. After which, hold a vote to
-             * forfeit, play man down, or allow any replacement player from
-             * spec to fill in.
-             */
+            * Start a reconnect grace timer. After which, hold a vote to
+            * forfeit, play man down, or allow any replacement player from
+            * spec to fill in.
+            */
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-                && (team == CS_TEAM_CT || team == CS_TEAM_T))
+            && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
