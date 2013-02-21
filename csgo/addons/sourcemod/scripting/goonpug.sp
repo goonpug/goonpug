@@ -1,34 +1,34 @@
 /* Copyright (c) 2013 Peter Rowlands
- *
- * This file is part of GoonPUG.
- *
- * GoonPUG is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundataion, either version 3 of the License, or
- * (at your option) any later version.
- *
- * GoonPUG is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with GoonPUG.  If not, see <http://www.gnu.org/licenses/>.
- */
- /**
- * CS:GO competitive PUG plugin
- *
- * Author: Peter "astroman" Rowlands <peter@pmrowla.com>
- */
+*
+* This file is part of GoonPUG.
+*
+* GoonPUG is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundataion, either version 3 of the License, or
+* (at your option) any later version.
+*
+* GoonPUG is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with GoonPUG.  If not, see <http://www.gnu.org/licenses/>.
+*/
+/**
+* CS:GO competitive PUG plugin
+*
+* Author: Peter "astroman" Rowlands <peter@pmrowla.com>
+*/
 
 //#define DEBUG 1
 
 #if defined DEBUG
-    #define assert(%1) if (!(%1)) ThrowError("Debug Assertion Failed");
-    #define assert_msg(%1, %2) if (!(%1)) ThrowError(%2);
+#define assert(%1) if (!(%1)) ThrowError("Debug Assertion Failed");
+#define assert_msg(%1, %2) if (!(%1)) ThrowError(%2);
 #else
-    #define assert(%1)
-    #define assert_msg(%1, %2)
+#define assert(%1)
+#define assert_msg(%1, %2)
 #endif
 
 #pragma semicolon 1
@@ -47,20 +47,21 @@
 */
 enum MatchState
 {
-MS_WARMUP = 0,
-MS_MAP_VOTE,
-MS_CAPTAINS_VOTE,
-MS_PICK_TEAMS,
-MS_PRE_LIVE,
-MS_LO3,
-MS_LIVE,
-MS_POST_MATCH,
+    MS_WARMUP = 0,
+    MS_MAP_VOTE,
+    MS_CAPTAINS_VOTE,
+    MS_PICK_TEAMS,
+    MS_PRE_LIVE,
+    MS_LO3,
+    MS_LIVE,
+    MS_POST_MATCH,
 };
 
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnable = INVALID_HANDLE;
+new Handle:g_cvar_hpEnable = INVALID_HANDLE;
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -93,21 +94,21 @@ new Handle:g_graceTimerTrie = INVALID_HANDLE;
 // Structure for storing players health information
 enum playerHpDataStruct
 {
-    String:Data_playerName[32],
+    String:Data_playerName[33],
     Data_hp,
-    Data_ap
-}
-//Indexes as so: playerHealthTable[client][teamindex][playerHpDataStruct]
-new playerHealthTable[MAXPLAYERS+1][2][playerHpDataStruct];
+    Data_ap,
+};
+//Indexes as so: playerHealthTable[client][playerHpDataStruct]
+new playerHealthTable[MAXPLAYERS+1][playerHpDataStruct];
 /**
 * Public plugin info
 */
 public Plugin:myinfo = {
-name = "GoonPUG",
-author = "astroman <peter@pmrowla.com>",
-description = "CS:GO PUG Plugin",
-version = GOONPUG_VERSION,
-url = "http://github.com/pmrowla/goonpug",
+    name = "GoonPUG",
+    author = "astroman <peter@pmrowla.com>",
+    description = "CS:GO PUG Plugin",
+    version = GOONPUG_VERSION,
+    url = "http://github.com/pmrowla/goonpug",
 }
 
 /**
@@ -117,25 +118,26 @@ public OnPluginStart()
 {
     // Set up GoonPUG convars
     CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
-                 FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
+    FCVAR_PLUGIN|FCVAR_SPONLY|FCVAR_REPLICATED|FCVAR_DONTRECORD);
     g_cvar_maxPugPlayers = CreateConVar("gp_max_pug_players", "10",
-                                    "Maximum players allowed in a PUG",
-                                    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    "Maximum players allowed in a PUG",
+    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
-                                        "Use deathmatch respawning during warmup rounds",
-                                        FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    "Use deathmatch respawning during warmup rounds",
+    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
-
+    
     new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
     if ((pugPlayers % 2) != 0)
     {
         SetConVarInt(g_cvar_maxPugPlayers, pugPlayers + 1);
     }
-
+    
     AutoExecConfig(true, "goonpug");
-
+    
     HookConVarChange(g_cvar_maxPugPlayers, ConVarChange_MaxPugPlayers);
-
+    
     // Register commands
     RegConsoleCmd("sm_ready", Command_Ready, "Sets a client's status to ready.");
     RegConsoleCmd("sm_unready", Command_Unready, "Sets a client's status to not ready.");
@@ -147,20 +149,22 @@ public OnPluginStart()
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
     RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP, "Locks teams");
     RegAdminCmd("sm_kickunready", Command_KickUnready, ADMFLAG_KICK, "Kicks unready players");
-
+    
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
     AddCommandListener(Command_Say, "say");
     AddCommandListener(Command_Say, "say2");
     AddCommandListener(Command_Say, "say_team");
-
+    
     // Hook events
+    HookEvent("round_start", Event_RoundStart);
+    HookEvent("round_end", Event_RoundEnd);
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_hurt", Event_PlayerHurt);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
-
+    
     g_graceTimerTrie = CreateTrie();
     g_playerTeamTrie = CreateTrie();
     g_playerTeamKeys = CreateArray(STEAMID_LEN);
@@ -195,11 +199,11 @@ public OnClientAuthorized(client, const String:auth[])
     {
         return;
     }
-
+    
     decl String:playerName[64];
     GetClientName(client, playerName, sizeof(playerName));
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
-
+    
     decl Handle:timer;
     if (GetTrieValue(g_graceTimerTrie, auth, timer))
     {
@@ -213,7 +217,7 @@ bool:IsTvEnabled()
     {
         return false;
     }
-
+    
     return GetConVarBool(g_cvar_tvEnable);
 }
 
@@ -231,12 +235,12 @@ public OnMapStart()
         {
             StartReadyUp();
         }
-#if defined DEBUG
+        #if defined DEBUG
         default:
         {
             ThrowError("OnMapStart: Invalid match state!");
         }
-#endif
+        #endif
     }
 }
 
@@ -247,25 +251,25 @@ public OnMapEnd()
 }
 
 /**
- * Read map lists that we need
- *
- * This should only be done once per map
- */
+* Read map lists that we need
+*
+* This should only be done once per map
+*/
 ReadMapLists()
 {
     new serial = -1;
     g_pugMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_match");
     if (g_pugMapList == INVALID_HANDLE)
         ThrowError("Could not read find goonpug_match maplist");
-
+    
     g_idleMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_idle");
     if (g_idleMapList == INVALID_HANDLE)
         ThrowError("Could not find goonpug_idle maplist");
 }
 
 /**
- * Close map lists
- */
+* Close map lists
+*/
 CloseMapLists()
 {
     if (g_pugMapList != INVALID_HANDLE)
@@ -281,17 +285,17 @@ CloseMapLists()
 }
 
 /**
- * Check if the specified client is a valid player
- */
+* Check if the specified client is a valid player
+*/
 bool:IsValidPlayer(client)
 {
     if (client > 0 && client <= MaxClients
-        && IsClientConnected(client)
-        && IsClientInGame(client))
+    && IsClientConnected(client)
+    && IsClientInGame(client))
     {
         if (IsFakeClient(client) && IsClientSourceTV(client))
         {
-                return false;
+            return false;
         }
         return true;
     }
@@ -299,16 +303,16 @@ bool:IsValidPlayer(client)
 }
 
 /**
- * Change the match state
- */
+* Change the match state
+*/
 ChangeMatchState(MatchState:newState)
 {
     g_matchState = newState;
 }
 
 /**
- * Reset ready up statuses
- */
+* Reset ready up statuses
+*/
 ResetReadyUp()
 {
     for (new i = 0; i <= MaxClients; i++)
@@ -318,25 +322,25 @@ ResetReadyUp()
 }
 
 /**
- * Check if the match is in a state where players need to ready up
- */
+* Check if the match is in a state where players need to ready up
+*/
 bool:NeedReadyUp()
 {
     if (g_matchState == MS_WARMUP || g_matchState == MS_PRE_LIVE)
     {
         return true;
     }
-
+    
     return false;
 }
 
 /**
- * Returns a menu for a map vote
- */
+* Returns a menu for a map vote
+*/
 Handle:BuildMapVoteMenu()
 {
     assert(g_pugMapList != INVALID_HANDLE)
-
+    
     new Handle:menu = CreateMenu(Menu_MapVote);
     SetMenuTitle(menu, "Vote for the map to play");
     new Handle:maplist = CloneArray(g_pugMapList);
@@ -353,13 +357,13 @@ Handle:BuildMapVoteMenu()
     }
     CloseHandle(maplist);
     SetMenuExitButton(menu, false);
-
+    
     return menu;
 }
 
 /**
- * Handler for a map vote menu
- */
+* Handler for a map vote menu
+*/
 public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
 {
     switch (action)
@@ -385,7 +389,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             new Float:percentage = (winningVotes / totalVotes) * 100.0;
             GetMenuItem(menu, param1, mapname, sizeof(mapname));
             PrintToChatAll("[GP] %s won with %0.f%% of the vote.",
-                mapname, percentage);
+            mapname, percentage);
             SetMatchMap(mapname);
         }
         case MenuAction_VoteCancel:
@@ -395,9 +399,9 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                 new len = GetArraySize(g_pugMapList);
                 decl String:mapname[64];
                 GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
-                               mapname, sizeof(mapname));
+                mapname, sizeof(mapname));
                 PrintToChatAll("[GP] No votes received, using random map: %s.",
-                               mapname);
+                mapname);
                 SetMatchMap(mapname);
             }
         }
@@ -405,23 +409,23 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
 }
 
 /**
- * Sets the global match map
- */
+* Sets the global match map
+*/
 SetMatchMap(const String:mapname[])
 {
     Format(g_matchMap, sizeof(g_matchMap), "%s", mapname);
 }
 
 /**
- * Selects a PUG map via player vote
- */
+* Selects a PUG map via player vote
+*/
 ChooseMatchMap()
 {
     ChangeMatchState(MS_MAP_VOTE);
     new Handle:menu = BuildMapVoteMenu();
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
-
+    
     for (new i = 1; i <= MaxClients; i++)
     {
         if (g_playerReady[i])
@@ -430,20 +434,20 @@ ChooseMatchMap()
             clientCount++;
         }
     }
-
+    
     if (IsVoteInProgress())
         CancelVote();
     VoteMenu(menu, clients, clientCount, 30);
 }
 
 /**
- * Returns a client ID that matches the specified name.
- *
- * @param exact true if only exact matches are acceptable
- *
- * @retval -1 No matching client found
- * @retval -2 If more than one possible match was found
- */
+* Returns a client ID that matches the specified name.
+*
+* @param exact true if only exact matches are acceptable
+*
+* @retval -1 No matching client found
+* @retval -2 If more than one possible match was found
+*/
 FindClientByName(const String:name[], bool:exact=false)
 {
     new client = -1;
@@ -471,13 +475,13 @@ FindClientByName(const String:name[], bool:exact=false)
             }
         }
     }
-
+    
     return client;
 }
 
 /**
- * Returns a menu for a map vote
- */
+* Returns a menu for a map vote
+*/
 Handle:BuildCaptainsVoteMenu()
 {
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
@@ -491,16 +495,16 @@ Handle:BuildCaptainsVoteMenu()
             AddMenuItem(menu, name, name);
         }
     }
-
+    
     SetMenuExitButton(menu, false);
     SetVoteResultCallback(menu, VoteHandler_CaptainsVote);
-
+    
     return menu;
 }
 
 /**
- * Handler for a map vote menu
- */
+* Handler for a map vote menu
+*/
 public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 {
     if (action == MenuAction_End)
@@ -514,20 +518,20 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 }
 
 /**
- * Handler for captain voting results
- *
- * TODO split this into multiple functions
- */
+* Handler for captain voting results
+*
+* TODO split this into multiple functions
+*/
 public VoteHandler_CaptainsVote(Handle:menu,
-                               numVotes,
-                               numClients,
-                               const clientInfo[][2],
-                               numItems,
-                               const itemInfo[][2])
+numVotes,
+numClients,
+const clientInfo[][2],
+numItems,
+const itemInfo[][2])
 {
     new firstPlaceVotes = 0;
     new Handle:firstPlaceWinners = CreateArray();
-
+    
     for (new i = 0; i < numItems; i++)
     {
         if (itemInfo[i][VOTEINFO_ITEM_VOTES] > firstPlaceVotes)
@@ -542,7 +546,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
             PushArrayCell(firstPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
         }
     }
-
+    
     PrintToChatAll("[GP] Vote Results:");
     new firstPlaceTotal = GetArraySize(firstPlaceWinners);
     for (new i = 0; i < firstPlaceTotal; i++)
@@ -558,7 +562,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
             PrintToChatAll("[GP] 1st place (tie): %s received %d votes.", name, firstPlaceVotes);
         }
     }
-
+    
     assert (firstPlaceTotal > 0)
     new captainIndex[2];
     if (firstPlaceTotal > 1)
@@ -570,14 +574,14 @@ public VoteHandler_CaptainsVote(Handle:menu,
         {
             rand2 = GetRandomInt(0, firstPlaceTotal - 1);
         } while (rand2 == rand1);
-
+        
         captainIndex[0] = GetArrayCell(firstPlaceWinners, rand1);
         captainIndex[1] = GetArrayCell(firstPlaceWinners, rand2);
     }
     else
     {
         captainIndex[0] = GetArrayCell(firstPlaceWinners, 0);
-
+        
         new Handle:secondPlaceWinners = CreateArray();
         new secondPlaceVotes = 0;
         for (new i = 0; i < numItems; i++)
@@ -598,7 +602,7 @@ public VoteHandler_CaptainsVote(Handle:menu,
                 PushArrayCell(secondPlaceWinners, itemInfo[i][VOTEINFO_ITEM_INDEX]);
             }
         }
-
+        
         new secondPlaceTotal = GetArraySize(secondPlaceWinners);
         for (new i = 0; i < secondPlaceTotal; i++)
         {
@@ -613,13 +617,13 @@ public VoteHandler_CaptainsVote(Handle:menu,
                 PrintToChatAll("[GP] 2nd place (tie): %s received %d votes.", name, secondPlaceVotes);
             }
         }
-
+        
         captainIndex[1] = GetArrayCell(secondPlaceWinners, GetRandomInt(0, GetArraySize(secondPlaceWinners) - 1));
         CloseHandle(secondPlaceWinners);
     }
-
+    
     CloseHandle(firstPlaceWinners);
-
+    
     for (new i = 0; i < 2; i++)
     {
         decl String:name[64];
@@ -631,8 +635,8 @@ public VoteHandler_CaptainsVote(Handle:menu,
 }
 
 /**
- * Selects teams via captains
- */
+* Selects teams via captains
+*/
 ChooseCaptains()
 {
     ChangeMatchState(MS_CAPTAINS_VOTE);
@@ -641,7 +645,7 @@ ChooseCaptains()
     new Handle:menu = BuildCaptainsVoteMenu();
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
-
+    
     for (new i = 1; i <= MaxClients; i++)
     {
         if (g_playerReady[i])
@@ -650,37 +654,37 @@ ChooseCaptains()
             clientCount++;
         }
     }
-
+    
     if (IsVoteInProgress())
         CancelVote();
     VoteMenu(menu, clients, clientCount, 30);
 }
 
 /**
- * Determines which captain picks first.
- *
- * The other captain then chooses which side (s)he wants first.
- */
+* Determines which captain picks first.
+*
+* The other captain then chooses which side (s)he wants first.
+*/
 ChooseFirstPick()
 {
     assert(g_captains[0] > 0)
     assert(g_captains[1] > 0)
-
+    
     if (g_matchState != MS_CAPTAINS_VOTE)
         return;
-
+    
     g_whosePick = GetRandomInt(0, 1);
     decl String:name[64];
     GetClientName(g_captains[g_whosePick], name, sizeof(name));
     PrintToChatAll("[GP] %s will pick first.", name);
-
+    
     new Handle:menu = BuildSideMenu();
     DisplayMenu(menu, g_captains[g_whosePick ^ 1], 0);
 }
 
 /**
- * Builds a menu for picking sides
- */
+* Builds a menu for picking sides
+*/
 Handle:BuildSideMenu()
 {
     new Handle:menu = CreateMenu(Menu_Sides);
@@ -692,8 +696,8 @@ Handle:BuildSideMenu()
 }
 
 /**
- * Menu handler for picking a side
- */
+* Menu handler for picking a side
+*/
 public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
 {
     switch (action)
@@ -748,8 +752,8 @@ ClearTeams()
 }
 
 /**
- * Lock team status for all players
- */
+* Lock team status for all players
+*/
 LockAndClearTeams()
 {
     g_lockTeams = true;
@@ -760,8 +764,8 @@ LockAndClearTeams()
 }
 
 /**
- * Lock current team status for all players
- */
+* Lock current team status for all players
+*/
 LockCurrentTeams()
 {
     g_lockTeams = true;
@@ -788,8 +792,8 @@ LockCurrentTeams()
 }
 
 /**
- * Unlock team status for all players
- */
+* Unlock team status for all players
+*/
 UnlockAndClearTeams()
 {
     g_lockTeams = false;
@@ -797,13 +801,13 @@ UnlockAndClearTeams()
 }
 
 /**
- * Actual picking of teams
- */
+* Actual picking of teams
+*/
 PickTeams()
 {
     if (g_matchState != MS_CAPTAINS_VOTE)
         return;
-
+    
     ChangeMatchState(MS_PICK_TEAMS);
     LockAndClearTeams();
     ForceAllSpec();
@@ -820,22 +824,22 @@ PickTeams()
 }
 
 /**
- * Runs until teams have been picked.
- */
+* Runs until teams have been picked.
+*/
 public Action:Timer_PickTeams(Handle:timer)
 {
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
         return Plugin_Stop;
-
+    
     // If invalid we can start the next pick.
     if (g_teamPickMenu != INVALID_HANDLE)
         return Plugin_Continue;
-
+    
     if (g_ctSlots == 0 && g_tSlots == 0)
     {
         PrintToChatAll("[GP] Done picking teams.");
-
+        
         decl String:curmap[64];
         GetCurrentMap(curmap, sizeof(curmap));
         if (!StrEqual(curmap, g_matchMap))
@@ -858,45 +862,45 @@ public Action:Timer_PickTeams(Handle:timer)
         g_teamPickMenu = BuildPickMenu();
         DisplayMenu(g_teamPickMenu, g_captains[g_whosePick], 0);
     }
-
+    
     return Plugin_Continue;
 }
 
 /**
- * Builds a menu with a list of pickable players
- */
+* Builds a menu with a list of pickable players
+*/
 Handle:BuildPickMenu()
 {
     new Handle:menu = CreateMenu(Menu_PickPlayer);
     new Handle:pickable = CreateArray();
     decl i;
-
+    
     for (i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR
-            && g_playerReady[i])
+        && g_playerReady[i])
         {
             PushArrayCell(pickable, i);
         }
     }
-
+    
     for (i = 0; i < GetArraySize(pickable); i++)
     {
         decl String:name[64];
         GetClientName(GetArrayCell(pickable, i), name, sizeof(name));
         AddMenuItem(menu, name, name);
     }
-
+    
     SetMenuTitle(menu, "Choose a player:");
     SetMenuExitButton(menu, false);
-
+    
     CloseHandle(pickable);
     return menu;
 }
 
 /**
- * Menu handler for picking a player
- */
+* Menu handler for picking a player
+*/
 public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
 {
     switch (action)
@@ -904,7 +908,7 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_Select:
         {
             assert(param1 == g_captains[g_whosePick])
-
+            
             decl String:pickName[64];
             GetMenuItem(menu, param2, pickName, sizeof(pickName));
             new pick = FindClientByName(pickName, true);
@@ -932,33 +936,33 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
 }
 
 /**
- * Force a player to join the specified team
- */
+* Force a player to join the specified team
+*/
 ForcePlayerTeam(client, team)
 {
     if (IsValidPlayer(client))
     {
         decl String:steamId[STEAMID_LEN];
         GetClientAuthString(client, steamId, sizeof(steamId));
-
+        
         if (team == CS_TEAM_NONE)
         {
             team = CS_TEAM_SPECTATOR;
         }
-
+        
         new index = FindStringInArray(g_playerTeamKeys, steamId);
         if (index < 0)
         {
             PushArrayString(g_playerTeamKeys, steamId);
         }
         SetTrieValue(g_playerTeamTrie, steamId, team);
-
+        
         ChangeClientTeam(client, team);
     }
 }
 /**
- * Force all players into spectator team
- */
+* Force all players into spectator team
+*/
 ForceAllSpec()
 {
     ClearTeams();
@@ -971,17 +975,17 @@ ForceAllSpec()
     }
 }
 
-    /**
- * Starts a timer to update a box with match information
- */
+/**
+* Starts a timer to update a box with match information
+*/
 StartMatchInfoText()
 {
     CreateTimer(1.0, Timer_MatchInfo, _, TIMER_REPEAT);
 }
 
 /**
- * Prints a continually updated center text box with info about an upcoming
- */
+* Prints a continually updated center text box with info about an upcoming
+*/
 public Action:Timer_MatchInfo(Handle:timer)
 {
     switch (g_matchState)
@@ -993,7 +997,7 @@ public Action:Timer_MatchInfo(Handle:timer)
         case MS_CAPTAINS_VOTE:
         {
             PrintCenterTextAll("Match Info:\nMap: %s",
-                               g_matchMap);
+            g_matchMap);
         }
         case MS_PICK_TEAMS:
         {
@@ -1002,7 +1006,7 @@ public Action:Timer_MatchInfo(Handle:timer)
             GetClientName(g_ctCaptain, ctName, sizeof(ctName));
             GetClientName(g_tCaptain, tName, sizeof(tName));
             PrintCenterTextAll("Match Info:\nMap: %s\n%s (CT) vs %s (T)",
-                               g_matchMap, ctName, tName);
+            g_matchMap, ctName, tName);
         }
         default:
         {
@@ -1010,7 +1014,7 @@ public Action:Timer_MatchInfo(Handle:timer)
             return Plugin_Stop;
         }
     }
-
+    
     return Plugin_Continue;
 }
 
@@ -1037,10 +1041,10 @@ StopServerDemo()
 }
 
 /**
- * Start the match
- *
- * Does a lo3
- */
+* Start the match
+*
+* Does a lo3
+*/
 StartLiveMatch()
 {
     StartServerDemo();
@@ -1055,7 +1059,7 @@ public Action:Timer_Lo3First(Handle:timer)
 {
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
-
+    
     PrintToChatAll("Live on 2...");
     ServerCommand("mp_restartgame 1\n");
     CreateTimer(3.0, Timer_Lo3Second);
@@ -1066,7 +1070,7 @@ public Action:Timer_Lo3Second(Handle:timer)
 {
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
-
+    
     PrintToChatAll("Live after next restart...");
     ServerCommand("mp_restartgame 5\n");
     CreateTimer(6.0, Timer_Lo3Third);
@@ -1077,7 +1081,7 @@ public Action:Timer_Lo3Third(Handle:timer)
 {
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
-
+    
     ChangeMatchState(MS_LIVE);
     LogToGame("GoonPUG triggered \"Start_Match\"");
     PrintCenterTextAll("LIVE! LIVE! LIVE!");
@@ -1085,11 +1089,11 @@ public Action:Timer_Lo3Third(Handle:timer)
 }
 
 /**
- * Call the appropriate match state function
- *
- * This function should be called when all PUG players have
- * readied up.
- */
+* Call the appropriate match state function
+*
+* This function should be called when all PUG players have
+* readied up.
+*/
 OnAllReady()
 {
     switch (g_matchState)
@@ -1102,36 +1106,36 @@ OnAllReady()
         {
             StartLiveMatch();
         }
-#if defined DEBUG
+        #if defined DEBUG
         default:
         {
             ThrowError("OnAllReady: Invalid match state!");
         }
-#endif
+        #endif
     }
 }
 
 /**
- * Changes the map to the match map
- */
+* Changes the map to the match map
+*/
 public Action:Timer_MatchMap(Handle:timer)
 {
     if (g_matchState != MS_PICK_TEAMS)
         return Plugin_Stop;
-
+    
     ChangeMatchState(MS_PRE_LIVE);
     decl String:map[64];
     GetNextMap(map, sizeof(map));
     ForceChangeLevel(map, "Changing to match map");
-
+    
     return Plugin_Stop;
 }
 
 /**
- * Starts a ready up stage
- *
- * TODO: kick a player if not ready after a certain amount of time
- */
+* Starts a ready up stage
+*
+* TODO: kick a player if not ready after a certain amount of time
+*/
 StartReadyUp(bool:reset=true)
 {
     StopServerDemo();
@@ -1144,20 +1148,20 @@ StartReadyUp(bool:reset=true)
 }
 
 /**
- * Checks the ready up status periodically
- */
+* Checks the ready up status periodically
+*/
 public Action:Timer_ReadyUp(Handle:timer)
 {
     static count = 0;
     static neededCount = -1;
-
+    
     // If the state was changed manually kill the ready up timer
     // This can happen if an admin forces a lo3
     if (!NeedReadyUp())
     {
         return Plugin_Stop;
     }
-
+    
     count++;
     neededCount = CheckAllReady();
     if(neededCount == 0)
@@ -1165,7 +1169,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         OnAllReady();
         return Plugin_Stop;
     }
-
+    
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && !g_playerReady[i])
@@ -1173,7 +1177,7 @@ public Action:Timer_ReadyUp(Handle:timer)
             PrintCenterText(i, "Use /ready to ready up.");
         }
     }
-
+    
     if ((count % 30) == 0)
     {
         PrintToChatAll("[GP] Still need %d players to ready up...", neededCount);
@@ -1201,19 +1205,19 @@ public Action:Timer_ReadyUp(Handle:timer)
         }
         PrintToChatAll(msg);
     }
-
+    
     return Plugin_Continue;
 }
 
 /**
- * Check if all players are readied up
- *
- * @return Number of players needed to ready up
- */
+* Check if all players are readied up
+*
+* @return Number of players needed to ready up
+*/
 CheckAllReady()
 {
     new playerCount = 0;
-
+    
     for (new i = 1; i < MaxClients; i++)
     {
         if (IsValidPlayer(i) && g_playerReady[i])
@@ -1221,20 +1225,20 @@ CheckAllReady()
             playerCount++;
         }
     }
-
+    
     new neededCount = GetConVarInt(g_cvar_maxPugPlayers);
     return (neededCount - playerCount);
 }
 
 /**
- * Post match stuff
- */
+* Post match stuff
+*/
 PostMatch()
 {
     StopServerDemo();
     ChangeMatchState(MS_POST_MATCH);
     LogToGame("GoonPUG triggered \"End_Match\"");
-
+    
     // Set the nextmap to a warmup map
     decl String:map[64];
     GetArrayString(g_idleMapList, GetRandomInt(0, GetArraySize(g_idleMapList) - 1), map, sizeof(map));
@@ -1244,8 +1248,8 @@ PostMatch()
 }
 
 /**
- * Changes to the idle phase
- */
+* Changes to the idle phase
+*/
 public Action:Timer_IdleMap(Handle:timer)
 {
     decl String:map[64];
@@ -1255,8 +1259,8 @@ public Action:Timer_IdleMap(Handle:timer)
 }
 
 /**
- * Restart the warmup stage
- */
+* Restart the warmup stage
+*/
 RestartWarmup(bool:reset=true)
 {
     LogToGame("GoonPUG triggered \"Start_Warmup\"");
@@ -1266,8 +1270,8 @@ RestartWarmup(bool:reset=true)
 }
 
 /**
- * Forces the start of a warmup stage
- */
+* Forces the start of a warmup stage
+*/
 public Action:Command_Warmup(client, args)
 {
     RestartWarmup();
@@ -1275,8 +1279,8 @@ public Action:Command_Warmup(client, args)
 }
 
 /**
- * Executes a lo3 and starts a match
- */
+* Executes a lo3 and starts a match
+*/
 public Action:Command_Lo3(client, args)
 {
     LockCurrentTeams();
@@ -1285,8 +1289,8 @@ public Action:Command_Lo3(client, args)
 }
 
 /**
- * Unlocks teams
- */
+* Unlocks teams
+*/
 public Action:Command_UnlockTeams(client, args)
 {
     if (g_lockTeams)
@@ -1301,8 +1305,8 @@ public Action:Command_UnlockTeams(client, args)
 }
 
 /**
- * Locks teams
- */
+* Locks teams
+*/
 public Action:Command_LockTeams(client, args)
 {
     if (!g_lockTeams)
@@ -1317,8 +1321,8 @@ public Action:Command_LockTeams(client, args)
 }
 
 /**
- * Sets a player's ready up state to ready
- */
+* Sets a player's ready up state to ready
+*/
 public Action:Command_Ready(client, args)
 {
     switch (g_matchState)
@@ -1346,7 +1350,7 @@ public Action:Command_Ready(client, args)
             // Only want players in the match to ready up
             decl String:steamId[STEAMID_LEN];
             GetClientAuthString(client, steamId, sizeof(steamId));
-
+            
             decl team;
             if (!GetTrieValue(g_playerTeamTrie, steamId, team))
             {
@@ -1375,20 +1379,20 @@ public Action:Command_Ready(client, args)
             PrintToChat(client, "[GP] You don't need to ready up right now.");
         }
     }
-
+    
     return Plugin_Handled;
 }
 
 /**
- * Sets a player's ready up state to not ready
- */
+* Sets a player's ready up state to not ready
+*/
 public Action:Command_Unready(client, args)
 {
     if (!NeedReadyUp())
     {
         PrintToChat(client, "[GP] You don't need to ready up right now.");
     }
-
+    
     if (!g_playerReady[client])
     {
         PrintToChat(client, "[GP] You are already not ready.");
@@ -1400,13 +1404,13 @@ public Action:Command_Unready(client, args)
         g_playerReady[client] = false;
         PrintToChatAll("[GP] %s is no longer ready.", name);
     }
-
+    
     return Plugin_Handled;
 }
 
 /**
- * Initiates forfeit vote
- */
+* Initiates forfeit vote
+*/
 public Action:Command_Forfeit(client, args)
 {
     if (g_matchState != MS_LIVE)
@@ -1414,7 +1418,7 @@ public Action:Command_Forfeit(client, args)
         PrintToChat(client, "[GP] You can't do that right now.");
         return Plugin_Handled;
     }
-
+    
     //get the team of client who initiated vote
     new team = GetClientTeam(client);
     if (team != CS_TEAM_T && team != CS_TEAM_CT)
@@ -1422,19 +1426,19 @@ public Action:Command_Forfeit(client, args)
         PrintToChat(client, "[GP] You must be participating the match to start a restart vote.");
         return Plugin_Handled;
     }
-
+    
     if (IsVoteInProgress())
     {
         PrintToChat(client, "[GP] You can't forfeit while another vote is in progress.");
         return Plugin_Handled;
     }
-
+    
     //alert everyone that a forfeit vote is taking place
     decl String:name[64];
     GetClientName(client, name, sizeof(name));
     g_playerReady[client] = false;
     PrintToChatAll("[GP] %s wants to forfeit.", name);
-
+    
     //build the forfeit vote menu
     new Handle:menu = CreateMenu(Menu_ForfeitVote);
     SetVoteResultCallback(menu, VoteHandler_ForfeitVote);
@@ -1442,10 +1446,10 @@ public Action:Command_Forfeit(client, args)
     AddMenuItem(menu, "yes", "Yes");
     AddMenuItem(menu, "no", "No");
     SetMenuExitButton(menu, false);
-
+    
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
-
+    
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && GetClientTeam(i) == team)
@@ -1454,47 +1458,43 @@ public Action:Command_Forfeit(client, args)
             clientCount++;
         }
     }
-
+    
     VoteMenu(menu, clients, clientCount, 30);
-
+    
     return Plugin_Handled;
 }
 
 /**
- *Displays all players current HP
- **/
+*Displays all players on the enemy team's current HP
+**/
 public Action:Command_Hp(client, args)
 {
-    for (new i=1; i<=MAXPLAYERS; i++)
+    new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
+    if (hpCvarEnabled != 0)
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        // Figure out which team the client requesting is on so we can only
+        // display the health information of the opposite team
+        new team = GetClientTeam(client);
+        new enemyTeam = CS_TEAM_CT;
+        if (team == CS_TEAM_CT)
         {
-            PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][GetClientTeam(i)][Data_playerName], playerHealthTable[i][GetClientTeam(i)][Data_hp], playerHealthTable[i][GetClientTeam(i)][Data_hp]);
+            enemyTeam = CS_TEAM_T;
+        }
+
+        for (new i=1; i<=MaxClients; i++)
+        {
+                if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == enemyTeam)
+                {
+                        PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+                }
         }
     }
     return Plugin_Handled;
 }
-public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
-{
-    new victimId = GetEventInt(event, "userid");
-    decl String:victimName[32];
-    new currentHp = GetClientHealth(victimId);
-    new currentAp = GetClientHealth(victimId);
-    new victim = GetClientOfUserId(victimId);
-    new victimTeam = GetClientTeam(victim);
-    GetClientName(victim, victimName, sizeof(victimName));
-
-    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
-    {
-        strcopy(playerHealthTable[victim][victimTeam][Data_playerName], 32, victimName);
-        playerHealthTable[victim][victimTeam][Data_hp] = currentHp;
-        playerHealthTable[victim][victimTeam][Data_ap] = currentAp;
-    }
-}
 
 /**
- *Kicks one "random" unready player
- **/
+*Kicks one "random" unready player
+**/
 public Action:Command_KickUnready(client, args)
 {
     if (!NeedReadyUp())
@@ -1510,7 +1510,7 @@ public Action:Command_KickUnready(client, args)
             GetClientName(i, name, sizeof(name));
             KickClient(i, "You have been kicked by an admin for being unready.");
             PrintToChatAll("[GP] %s has been kicked for being unready",
-                           name);
+            name);
             return Plugin_Handled;
         }
     }
@@ -1530,7 +1530,7 @@ public VoteHandler_ForfeitVote(Handle:menu, num_votes, num_clients, const client
 {
     decl String:vote[64];
     GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
-
+    
     //check to see that no one voted no, then end the match
     if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && StrEqual(vote, "yes"))
     {
@@ -1545,8 +1545,8 @@ public VoteHandler_ForfeitVote(Handle:menu, num_votes, num_clients, const client
 }
 
 /**
- * Initiates restart vote
- */
+* Initiates restart vote
+*/
 public Action:Command_Restart(client, args)
 {
     if (g_matchState != MS_LIVE)
@@ -1554,25 +1554,25 @@ public Action:Command_Restart(client, args)
         PrintToChat(client, "[GP] You can't do that right now.");
         return Plugin_Handled;
     }
-
+    
     new team = GetClientTeam(client);
     if (team != CS_TEAM_T && team != CS_TEAM_CT)
     {
         PrintToChat(client, "[GP] You must be participating the match to start a restart vote.");
         return Plugin_Handled;
     }
-
+    
     if (IsVoteInProgress())
     {
         PrintToChat(client, "[GP] You can't start a restart vote while another vote is in progress.");
         return Plugin_Handled;
     }
-
+    
     decl String:name[64];
     GetClientName(client, name, sizeof(name));
     g_playerReady[client] = false;
     PrintToChatAll("[GP] %s wants to restart the match.", name);
-
+    
     //build the forfeit vote menu
     new Handle:menu = CreateMenu(Menu_RestartVote);
     SetVoteResultCallback(menu, VoteHandler_RestartVote);
@@ -1580,7 +1580,7 @@ public Action:Command_Restart(client, args)
     AddMenuItem(menu, "yes", "Yes");
     AddMenuItem(menu, "no", "No");
     SetMenuExitButton(menu, false);
-
+    
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
     for (new i = 1; i <= MaxClients; i++)
@@ -1592,15 +1592,15 @@ public Action:Command_Restart(client, args)
             clientCount++;
         }
     }
-
+    
     VoteMenu(menu, clients, clientCount, 30);
-
+    
     return Plugin_Handled;
 }
 
 /**
- * Hooks the say command
- */
+* Hooks the say command
+*/
 public Action:Command_Say(client, const String:command[], argc)
 {
     decl String:param[32];
@@ -1631,7 +1631,7 @@ public VoteHandler_RestartVote(Handle:menu, num_votes, num_clients, const client
 {
     decl String:vote[64];
     GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], vote, sizeof(vote));
-
+    
     // check to see that no one voted no, then end the match
     if(item_info[0][VOTEINFO_ITEM_VOTES] == num_clients && StrEqual(vote, "yes"))
     {
@@ -1646,23 +1646,23 @@ public VoteHandler_RestartVote(Handle:menu, num_votes, num_clients, const client
 }
 
 /**
- * Forces players to join a specific team if teams are locked
- */
+* Forces players to join a specific team if teams are locked
+*/
 public Action:Command_Jointeam(client, const String:command[], argc)
 {
     if (!IsValidPlayer(client))
         return Plugin_Continue;
-
+    
     decl String:param[16];
     GetCmdArg(1, param, sizeof(param));
     StripQuotes(param);
     new team = StringToInt(param);
-
+    
     if (g_lockTeams)
     {
         decl String:steamId[STEAMID_LEN];
         GetClientAuthString(client, steamId, sizeof(steamId));
-
+        
         decl assignedTeam;
         if (GetTrieValue(g_playerTeamTrie, steamId, assignedTeam))
         {
@@ -1720,8 +1720,8 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 }
 
 /**
- * Updates our locked teams at halftime
- */
+* Updates our locked teams at halftime
+*/
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
     for (new i = 0; i < GetArraySize(g_playerTeamKeys); i++)
@@ -1739,13 +1739,13 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
             SetTrieValue(g_playerTeamTrie, steamId, CS_TEAM_CT);
         }
     }
-
+    
     return Plugin_Continue;
 }
 
 /**
- * Run at the conclusion of a match
- */
+* Run at the conclusion of a match
+*/
 public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dontBroadcast)
 {
     if (g_matchState == MS_LIVE)
@@ -1756,23 +1756,94 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
 }
 
 /**
- * If we are in a ready up phase just respawn everyone constantly
- */
+* If we are in a ready up phase just respawn everyone constantly
+*/
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
+        new userid = GetEventInt(event, "userid");
+        new client = GetClientOfUserId(userid);
     new dm = GetConVarInt(g_cvar_idleDeathmatch);
     if (NeedReadyUp() && dm != 0)
     {
-        new userid = GetEventInt(event, "userid");
-        new client = GetClientOfUserId(userid);
         CreateTimer(2.5, Timer_RespawnPlayer, client);
+    }
+        if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client))
+        {
+            Command_Hp(client, 0);
+        }
+    return Plugin_Continue;
+}
+public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    new victimId = GetEventInt(event, "userid");
+    decl String:victimName[32];
+    new currentHp = GetClientHealth(victimId);
+    new currentAp = GetClientHealth(victimId);
+    new victim = GetClientOfUserId(victimId);
+
+    GetClientName(victim, victimName, sizeof(victimName));
+    
+    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
+    {
+        strcopy(playerHealthTable[victim][Data_playerName], 32, victimName);
+        playerHealthTable[victim][Data_hp] = currentHp;
+        playerHealthTable[victim][Data_ap] = currentAp;
     }
     return Plugin_Continue;
 }
-
 /**
- * Respawns the specified player
- */
+* Callback for beginning of round, sets all player's health in the table to their current values
+**/
+public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    for (new i = 1; i < MaxClients; i++)
+    {
+        decl String:iName[32];
+                if (IsClientInGame(i))
+                {
+                    new currentHp = GetClientHealth(i);
+                    new currentAp = GetClientHealth(i);
+                    GetClientName(i, iName, sizeof(iName));
+                    if (IsPlayerAlive(i) && !IsFakeClient(i))
+                    {
+                            strcopy(playerHealthTable[i][Data_playerName], 32, iName);
+                            playerHealthTable[i][Data_hp] = currentHp;
+                            playerHealthTable[i][Data_ap] = currentAp;
+                    }
+                }
+        new currentHp = GetClientHealth(i);
+        new currentAp = GetClientHealth(i);
+                GetClientName(i, iName, sizeof(iName));
+        if (IsClientInGame(i) && IsPlayerAlive(i) && !IsFakeClient(i))
+        {
+                        
+            strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
+            playerHealthTable[i][Data_hp] = currentHp;
+            playerHealthTable[i][Data_ap] = currentAp;
+        }
+    }   
+    return Plugin_Continue;
+}
+/**
+* Callback triggered at round end, zeroes out the player health table
+**/
+public Action:Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    for (new i = 0; i < MaxClients; i++)
+    {
+            new client = GetClientOfUserId(i);
+            if (IsClientInGame(client) && IsPlayerAlive(client) && !IsFakeClient(client))
+            {
+                playerHealthTable[client][Data_playerName] = 0;
+                playerHealthTable[client][Data_hp] = 0;
+                playerHealthTable[client][Data_ap] = 0;
+            }
+    }   
+    return Plugin_Continue;
+}
+/**
+* Respawns the specified player
+*/
 public Action:Timer_RespawnPlayer(Handle:timer, any:client)
 {
     if (IsValidPlayer(client) && !IsPlayerAlive(client))
@@ -1786,22 +1857,22 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
     static count = 0;
     decl String:playerName[64];
     decl String:steamId[STEAMID_LEN];
-
+    
     ResetPack(pack);
     ReadPackString(pack, playerName, sizeof(playerName));
     ReadPackString(pack, steamId, sizeof(steamId));
-
+    
     count++;
     if (count < 3)
     {
         PrintToChatAll("\x01\x0b\x02[GP]: %s has %d minutes to reconnect.",
-                       playerName, (3 - count));
+        playerName, (3 - count));
         return Plugin_Continue;
     }
     else
     {
         PrintToChatAll("\x01\x0b\x02[GP]: %s has abandoned the match.", playerName);
-
+        
         new index = FindStringInArray(g_playerTeamKeys, steamId);
         if (index >= 0)
         {
@@ -1823,12 +1894,12 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
 }
 
 /**
- * Start a 3 minute reconnect grace timer for the given player
- */
+* Start a 3 minute reconnect grace timer for the given player
+*/
 StartGraceTimer(const String:playerName[], const String:steamId[])
 {
     PrintToChatAll("\x01\x0b\x02[GP]: %s has 3 minutes to reconnect.",
-                   playerName);
+    playerName);
     new Handle:pack;
     new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE | TIMER_FLAG_NO_MAPCHANGE);
     WritePackString(pack, playerName);
@@ -1837,38 +1908,38 @@ StartGraceTimer(const String:playerName[], const String:steamId[])
 }
 
 /**
- * Handle player disconnections
- */
+* Handle player disconnections
+*/
 public Action:Event_PlayerDisconnect(
-    Handle:event,
-    const String:name[],
-    bool:dontBroadcast)
+Handle:event,
+const String:name[],
+bool:dontBroadcast)
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
-
+    
     if (client < 1 || IsFakeClient(client))
     {
         return Plugin_Continue;
     }
-
+    
     decl String:steamId[STEAMID_LEN];
     GetClientAuthString(client, steamId, sizeof(steamId));
     decl String:playerName[64];
     GetClientName(client, playerName, sizeof(playerName));
     decl String:reason[64];
     GetEventString(event, "reason", reason, sizeof(reason));
-
+    
     PrintToChatAll("\x01\x0b\x04%s disconnected: %s", playerName, reason);
-
+    
     switch (g_matchState)
     {
         case MS_MAP_VOTE, MS_CAPTAINS_VOTE, MS_PICK_TEAMS:
         {
             /*
-             * if a readied player drops in these states, just go back to
-             * warmup and start over
-             */
+            * if a readied player drops in these states, just go back to
+            * warmup and start over
+            */
             if (g_playerReady[client])
             {
                 PrintToChatAll("[GP]: Restarting warmup...");
@@ -1881,14 +1952,14 @@ public Action:Event_PlayerDisconnect(
         case MS_PRE_LIVE, MS_LO3:
         {
             /*
-             * If the player was involved in the match, start a reconnect grace
-             * timer. After which, hold a vote to forfeit, play man down, or
-             * allow any replacement player from spec to fill in.
-             */
+            * If the player was involved in the match, start a reconnect grace
+            * timer. After which, hold a vote to forfeit, play man down, or
+            * allow any replacement player from spec to fill in.
+            */
             g_playerReady[client] = false;
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-                && (team == CS_TEAM_CT || team == CS_TEAM_T))
+            && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
@@ -1896,13 +1967,13 @@ public Action:Event_PlayerDisconnect(
         case MS_LIVE:
         {
             /*
-             * Start a reconnect grace timer. After which, hold a vote to
-             * forfeit, play man down, or allow any replacement player from
-             * spec to fill in.
-             */
+            * Start a reconnect grace timer. After which, hold a vote to
+            * forfeit, play man down, or allow any replacement player from
+            * spec to fill in.
+            */
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-                && (team == CS_TEAM_CT || team == CS_TEAM_T))
+            && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
@@ -1912,6 +1983,6 @@ public Action:Event_PlayerDisconnect(
             g_playerReady[client] = false;
         }
     }
-
+    
     return Plugin_Continue;
 }
