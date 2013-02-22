@@ -29,9 +29,11 @@ ifeq "$(OS)" "Darwin"
 	CC = clang
 	LIB_EXT = dylib
 	HL2LIB = $(HL2SDK)/lib/mac
+	PBLIB = $(HL2SDK)/lib/osx32/release
 else
 	LIB_EXT = so
 	HL2LIB = $(HL2SDK)/lib/linux
+	PBLIB = $(HL2SDK)/lib/linux32/release
 endif
 
 LIB_PREFIX = lib
@@ -41,14 +43,16 @@ CFLAGS += -DSE_EPISODEONE=1 -DSE_DARKMESSIAH=2 -DSE_ORANGEBOX=3 -DSE_BLOODYGOODT
 	-DSE_CSS=6 -DSE_ORANGEBOXVALVE=7 -DSE_LEFT4DEAD=8 -DSE_LEFT4DEAD2=9 -DSE_ALIENSWARM=10 \
 	-DSE_PORTAL2=11 -DSE_CSGO=12
 
-LINK += -L$(HL2LIB) $(HL2LIB)/tier1_i486.a -lvstdlib -ltier0
+LINK += -L$(HL2LIB) $(HL2LIB)/tier1_i486.a -lvstdlib -ltier0 -L$(PBLIB) -lprotobuf
 
 ifeq "$(ENGINE)" "csgo"
 	LINK += $(HL2LIB)/interfaces_i486.a
 endif
 
 INCLUDE += -I. -I.. -I$(HL2PUB) -I$(HL2PUB)/engine -I$(HL2PUB)/mathlib -I$(HL2PUB)/vstdlib \
-	-I$(HL2PUB)/tier0 -I$(HL2PUB)/tier1 -I. -I$(METAMOD) -I$(METAMOD)/sourcehook
+	-I$(HL2PUB)/tier0 -I$(HL2PUB)/tier1 -I. -I$(METAMOD) -I$(METAMOD)/sourcehook \
+	-I$(HL2PUB)/game/shared/csgo/protobuf -I$(HL2PUB)/engine/protobuf \
+	-I$(HL2SDK)/common/protobuf-2.3.0/src
 
 BINARY = $(PROJECT).$(LIB_EXT)
 
@@ -75,7 +79,7 @@ endif
 CFLAGS += -DPOSIX -Dstricmp=strcasecmp -D_stricmp=strcasecmp -D_strnicmp=strncasecmp \
 	-Dstrnicmp=strncasecmp -D_snprintf=snprintf -D_vsnprintf=vsnprintf -D_alloca=alloca \
 	-Dstrcmpi=strcasecmp -DCOMPILER_GCC -Wall -Wno-non-virtual-dtor -Wno-overloaded-virtual \
-	-Werror -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
+	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
 
 # Clang || GCC >= 4
 ifeq "$(shell expr $(IS_CLANG) \| $(CC_MAJOR) \>= 4)" "1"
@@ -117,6 +121,7 @@ default: all
 
 clean: 
 	rm -rf *.o
+	rm -rf ../export/Release.$(ENGINE)/$(BINARY) ../export/Release.$(ENGINE)/$(BINARY)
 	rm -rf ../export/Debug.$(ENGINE)/$(BINARY) ../export/Debug.$(ENGINE)/$(BINARY)
 
 .PHONY: gitversion
