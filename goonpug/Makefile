@@ -48,7 +48,9 @@ ifeq "$(ENGINE)" "csgo"
 endif
 
 INCLUDE += -I. -I.. -I$(HL2PUB) -I$(HL2PUB)/engine -I$(HL2PUB)/mathlib -I$(HL2PUB)/vstdlib \
-	-I$(HL2PUB)/tier0 -I$(HL2PUB)/tier1 -I. -I$(METAMOD) -I$(METAMOD)/sourcehook
+	-I$(HL2PUB)/tier0 -I$(HL2PUB)/tier1 -I. -I$(METAMOD) -I$(METAMOD)/sourcehook \
+	-I$(HL2PUB)/game/shared/csgo/protobuf -I$(HL2PUB)/engine/protobuf \
+	-I$(HL2SDK)/common/protobuf-2.3.0/src
 
 BINARY = $(PROJECT).$(LIB_EXT)
 
@@ -75,7 +77,7 @@ endif
 CFLAGS += -DPOSIX -Dstricmp=strcasecmp -D_stricmp=strcasecmp -D_strnicmp=strncasecmp \
 	-Dstrnicmp=strncasecmp -D_snprintf=snprintf -D_vsnprintf=vsnprintf -D_alloca=alloca \
 	-Dstrcmpi=strcasecmp -DCOMPILER_GCC -Wall -Wno-non-virtual-dtor -Wno-overloaded-virtual \
-	-Werror -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
+	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
 
 # Clang || GCC >= 4
 ifeq "$(shell expr $(IS_CLANG) \| $(CC_MAJOR) \>= 4)" "1"
@@ -117,6 +119,7 @@ default: all
 
 clean: 
 	rm -rf *.o
+	rm -rf ../export/Release.$(ENGINE)/$(BINARY) ../export/Release.$(ENGINE)/$(BINARY)
 	rm -rf ../export/Debug.$(ENGINE)/$(BINARY) ../export/Debug.$(ENGINE)/$(BINARY)
 
 .PHONY: gitversion

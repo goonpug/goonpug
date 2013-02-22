@@ -28,8 +28,12 @@
 #include <cctype>
 #include <string>
 #include <map>
+#include <ISmmPlugin.h>
+#include <igameevents.h>
+#include <iplayerinfo.h>
+#include <sh_vector.h>
 
-#include "gp_version.h"
+#include "goonpug.h"
 #include "gp_plugin.h"
 
 GoonpugPlugin g_goonpugPlugin;

@@ -26,6 +26,7 @@
 #ifndef _GOONPUG_PLUGIN_H_
 #define _GOONPUG_PLUGIN_H_
 
+#include <eiface.h>
 #include <ISmmPlugin.h>
 #include <igameevents.h>
 #include <iplayerinfo.h>
