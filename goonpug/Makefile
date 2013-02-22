@@ -29,9 +29,11 @@ ifeq "$(OS)" "Darwin"
 	CC = clang
 	LIB_EXT = dylib
 	HL2LIB = $(HL2SDK)/lib/mac
+	PBLIB = $(HL2SDK)/lib/osx32/release
 else
 	LIB_EXT = so
 	HL2LIB = $(HL2SDK)/lib/linux
+	PBLIB = $(HL2SDK)/lib/linux32/release
 endif
 
 LIB_PREFIX = lib
@@ -41,7 +43,7 @@ CFLAGS += -DSE_EPISODEONE=1 -DSE_DARKMESSIAH=2 -DSE_ORANGEBOX=3 -DSE_BLOODYGOODT
 	-DSE_CSS=6 -DSE_ORANGEBOXVALVE=7 -DSE_LEFT4DEAD=8 -DSE_LEFT4DEAD2=9 -DSE_ALIENSWARM=10 \
 	-DSE_PORTAL2=11 -DSE_CSGO=12
 
-LINK += -L$(HL2LIB) $(HL2LIB)/tier1_i486.a -lvstdlib -ltier0
+LINK += -L$(HL2LIB) $(HL2LIB)/tier1_i486.a -lvstdlib -ltier0 -L$(PBLIB) -lprotobuf
 
 ifeq "$(ENGINE)" "csgo"
 	LINK += $(HL2LIB)/interfaces_i486.a
