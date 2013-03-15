@@ -62,6 +62,8 @@ new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnable = INVALID_HANDLE;
 new Handle:g_cvar_hpEnable = INVALID_HANDLE;
+new Handle:g_cvar_randomTeams = INVALID_HANDLE;
+
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -127,6 +129,9 @@ public OnPluginStart()
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
+    g_cvar_randomTeams = CreateConVar("gp_random_teams", "1",
+                                    "enables/disables random team choosing",
+                                    FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
 
     new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
     if ((pugPlayers % 2) != 0)
@@ -378,7 +383,14 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             else
             {
                 StartMatchInfoText();
-                ChooseCaptains();
+                if (GetConVarBool(g_cvar_randomTeams) == true)
+                {
+                    RandomizeTeams();
+                }
+                else
+                {
+                    ChooseCaptains();
+                }
             }
         }
         case MenuAction_VoteEnd:
@@ -823,6 +835,39 @@ PickTeams()
     CreateTimer(1.0, Timer_PickTeams, _, TIMER_REPEAT);
 }
 
+/**
+ * Sets teams randomly
+ */
+RandomizeTeams()
+{
+    ChangeMatchState(MS_PICK_TEAMS);
+    LockAndClearTeams();
+    ForceAllSpec();
+    decl i;
+    for (i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR && g_playerReady[i])
+        {
+            new String:name[64];
+            decl team;
+            new n = GetRandomInt(0, 1);
+            if (n == 0)
+            {
+                team = CS_TEAM_CT;
+                ForcePlayerTeam(i, team);
+                g_ctSlots--;
+                PrintToChatAll("[GP] %s was assigned to CTs", name);
+            }
+            else if (n == 1)
+            {
+                team = CS_TEAM_T;
+                ForcePlayerTeam(i, team);
+                g_tSlots--;
+                PrintToChatAll("[GP] %s was assigned to Ts", name);
+            }
+        }
+    }
+}
 /**
  * Runs until teams have been picked.
  */
