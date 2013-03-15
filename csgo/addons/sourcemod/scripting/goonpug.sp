@@ -129,7 +129,7 @@ public OnPluginStart()
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
-    g_cvar_randomTeams = CreateConVar("gp_random_teams", "1",
+    g_cvar_randomTeams = CreateConVar("gp_random_teams", "0",
                                     "enables/disables random team choosing",
                                     FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
 
@@ -228,6 +228,7 @@ bool:IsTvEnabled()
 
 public OnMapStart()
 {
+    gp_random_teams
     ReadMapLists();
     switch (g_matchState)
     {
@@ -383,7 +384,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             else
             {
                 StartMatchInfoText();
-                if (GetConVarBool(g_cvar_randomTeams) == true)
+                if (GetConVarInt(g_cvar_randomTeams) == 1)
                 {
                     RandomizeTeams();
                 }
@@ -1658,6 +1659,11 @@ public Action:Command_Say(client, const String:command[], argc)
     if (StrEqual(param, ".hp"))
     {
         return Command_Hp(client, 0);
+    }
+    if (StrEqual(param, ".randomize"))
+    {
+        g_cvar_randomTeams = 1;
+        return Plugin_Continue;
     }
     else
     {
