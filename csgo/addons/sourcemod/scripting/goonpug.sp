@@ -43,18 +43,18 @@
 #define STEAMID_LEN 32
 
 /**
- * Match states
- */
+* Match states
+*/
 enum MatchState
 {
-    MS_WARMUP = 0,
-    MS_MAP_VOTE,
-    MS_CAPTAINS_VOTE,
-    MS_PICK_TEAMS,
-    MS_PRE_LIVE,
-    MS_LO3,
-    MS_LIVE,
-    MS_POST_MATCH,
+MS_WARMUP = 0,
+MS_MAP_VOTE,
+MS_CAPTAINS_VOTE,
+MS_PICK_TEAMS,
+MS_PRE_LIVE,
+MS_LO3,
+MS_LIVE,
+MS_POST_MATCH,
 };
 
 // Global convar handles
@@ -103,19 +103,19 @@ enum playerHpDataStruct
 //Indexes as so: playerHealthTable[client][playerHpDataStruct]
 new playerHealthTable[MAXPLAYERS+1][playerHpDataStruct];
 /**
- * Public plugin info
- */
+* Public plugin info
+*/
 public Plugin:myinfo = {
-    name = "GoonPUG",
-    author = "astroman <peter@pmrowla.com>",
-    description = "CS:GO PUG Plugin",
-    version = GOONPUG_VERSION,
-    url = "http://github.com/pmrowla/goonpug",
+name = "GoonPUG",
+author = "astroman <peter@pmrowla.com>",
+description = "CS:GO PUG Plugin",
+version = GOONPUG_VERSION,
+url = "http://github.com/pmrowla/goonpug",
 }
 
 /**
- * Initialize GoonPUG
- */
+* Initialize GoonPUG
+*/
 public OnPluginStart()
 {
     // Set up GoonPUG convars
@@ -1521,17 +1521,23 @@ public Action:Command_Hp(client, args)
         // Figure out which team the client requesting is on so we can only
         // display the health information of the opposite team
         new team = GetClientTeam(client);
-        new enemyTeam = CS_TEAM_CT;
+        decl enemyTeam = ;
         if (team == CS_TEAM_CT)
         {
             enemyTeam = CS_TEAM_T;
+        }
+        else if (team == CS_TEAM_T)
+        {
+            enemyTeam = CS_TEAM_CT;
         }
 
         for (new i=1; i<=MaxClients; i++)
         {
                 if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == enemyTeam)
                 {
-                        PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][Data_playerName], playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+                    PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.",
+                                playerHealthTable[i][Data_playerName],
+                                playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
                 }
         }
     }
@@ -1556,7 +1562,7 @@ public Action:Command_KickUnready(client, args)
             GetClientName(i, name, sizeof(name));
             KickClient(i, "You have been kicked by an admin for being unready.");
             PrintToChatAll("[GP] %s has been kicked for being unready",
-            name);
+                           name);
             return Plugin_Handled;
         }
     }
@@ -1811,11 +1817,11 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
  */
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    new userid = GetEventInt(event, "userid");
-    new client = GetClientOfUserId(userid);
     new dm = GetConVarInt(g_cvar_idleDeathmatch);
     if (NeedReadyUp() && dm != 0)
     {
+        new userid = GetEventInt(event, "userid");
+        new client = GetClientOfUserId(userid);
         CreateTimer(2.5, Timer_RespawnPlayer, client);
     }
     if (!IsPlayerAlive(client) && IsClientInGame(client) && !IsFakeClient(client))
@@ -1916,7 +1922,7 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
     if (count < 3)
     {
         PrintToChatAll("\x01\x0b\x02[GP]: %s has %d minutes to reconnect.",
-        playerName, (3 - count));
+                       playerName, (3 - count));
         return Plugin_Continue;
     }
     else
@@ -1949,7 +1955,7 @@ public Action:Timer_GraceTimer(Handle:timer, Handle:pack)
 StartGraceTimer(const String:playerName[], const String:steamId[])
 {
     PrintToChatAll("\x01\x0b\x02[GP]: %s has 3 minutes to reconnect.",
-    playerName);
+                   playerName);
     new Handle:pack;
     new Handle:timer = CreateDataTimer(60.0, Timer_GraceTimer, pack, TIMER_REPEAT | TIMER_DATA_HNDL_CLOSE | TIMER_FLAG_NO_MAPCHANGE);
     WritePackString(pack, playerName);
@@ -1961,9 +1967,9 @@ StartGraceTimer(const String:playerName[], const String:steamId[])
  * Handle player disconnections
  */
 public Action:Event_PlayerDisconnect(
-Handle:event,
-const String:name[],
-bool:dontBroadcast)
+    Handle:event,
+    const String:name[],
+    bool:dontBroadcast)
 {
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
@@ -1987,9 +1993,9 @@ bool:dontBroadcast)
         case MS_MAP_VOTE, MS_CAPTAINS_VOTE, MS_PICK_TEAMS:
         {
             /*
-            * if a readied player drops in these states, just go back to
-            * warmup and start over
-            */
+             * if a readied player drops in these states, just go back to
+             * warmup and start over
+             */
             if (g_playerReady[client])
             {
                 PrintToChatAll("[GP]: Restarting warmup...");
@@ -2002,14 +2008,14 @@ bool:dontBroadcast)
         case MS_PRE_LIVE, MS_LO3:
         {
             /*
-            * If the player was involved in the match, start a reconnect grace
-            * timer. After which, hold a vote to forfeit, play man down, or
-            * allow any replacement player from spec to fill in.
-            */
+             * If the player was involved in the match, start a reconnect grace
+             * timer. After which, hold a vote to forfeit, play man down, or
+             * allow any replacement player from spec to fill in.
+             */
             g_playerReady[client] = false;
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-            && (team == CS_TEAM_CT || team == CS_TEAM_T))
+                && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
@@ -2017,13 +2023,13 @@ bool:dontBroadcast)
         case MS_LIVE:
         {
             /*
-            * Start a reconnect grace timer. After which, hold a vote to
-            * forfeit, play man down, or allow any replacement player from
-            * spec to fill in.
-            */
+             * Start ea reconnect grace timer. After which, hold a vote to
+             * forfeit, play man down, or allow any replacement player from
+             * spec to fill in.
+             */
             decl team;
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
-            && (team == CS_TEAM_CT || team == CS_TEAM_T))
+                && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
                 StartGraceTimer(playerName, steamId);
             }
