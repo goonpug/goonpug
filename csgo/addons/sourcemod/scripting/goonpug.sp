@@ -395,14 +395,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             else
             {
                 StartMatchInfoText();
-                if (GetConVarInt(g_cvar_randomTeams) == 1)
-                {
-                    RandomizeTeams();
-                }
-                else
-                {
-                    ChooseCaptains();
-                }
+                ChooseCaptains();
             }
         }
         case MenuAction_VoteEnd:
