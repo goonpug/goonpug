@@ -39,7 +39,7 @@
 #include <sdktools_functions>
 
 #define GOONPUG_VERSION "0.0.4"
-
+#define MAX_ROUNDS 50 //for now
 #define STEAMID_LEN 32
 
 /**
@@ -61,6 +61,8 @@ MS_POST_MATCH,
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
 new Handle:g_cvar_tvEnable = INVALID_HANDLE;
+new Handle:g_cvar_hpEnable = INVALID_HANDLE;
+
 
 // Global menu handles
 new Handle:g_pugMapList = INVALID_HANDLE;
@@ -69,6 +71,7 @@ new Handle:g_idleMapList = INVALID_HANDLE;
 // Global match information
 new MatchState:g_matchState = MS_WARMUP;
 new String:g_matchMap[64] = "";
+new CurrentRound = 0;
 
 // Global team choosing info
 new g_captains[2];
@@ -90,15 +93,22 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 // Grace timer handles
 new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
+/* Vector for all the damage */
+new Handle:hMatchDamage[MAX_ROUNDS]; 
+/* Vector for all the kills */
+new Handle:hMatchKills[MAX_ROUNDS]; 
+
 // Structure for storing players health information
 enum playerHpDataStruct
 {
-    String:Data_playerName[32],
+    String:Data_playerName[33],
     Data_hp,
-    Data_ap
-}
-//Indexes as so: playerHealthTable[client][teamindex][playerHpDataStruct]
-new playerHealthTable[MAXPLAYERS+1][2][playerHpDataStruct];
+    Data_ap,
+};
+
+//Indexes as so: playerHealthTable[client][playerHpDataStruct]
+new playerHealthTable[MAXPLAYERS+1][playerHpDataStruct];
+
 /**
 * Public plugin info
 */
@@ -124,6 +134,7 @@ public OnPluginStart()
     g_cvar_idleDeathmatch = CreateConVar("gp_idle_dm", "0",
                                         "Use deathmatch respawning during warmup rounds",
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
+    g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
     g_cvar_tvEnable = FindConVar("tv_enable");
 
     new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
@@ -155,6 +166,8 @@ public OnPluginStart()
     AddCommandListener(Command_Say, "say_team");
 
     // Hook events
+    HookEvent("round_start", Event_RoundStart);
+    HookEvent("round_end", Event_RoundEnd);
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
@@ -971,7 +984,7 @@ ForceAllSpec()
     }
 }
 
-    /**
+/**
  * Starts a timer to update a box with match information
  */
 StartMatchInfoText()
@@ -1459,37 +1472,54 @@ public Action:Command_Forfeit(client, args)
 
     return Plugin_Handled;
 }
+UpdatePlayerHealth(client)
+{
+    if (IsClientInGame(client))
+    {
+        new currentHp = GetClientHealth(client);
+        new currentAp = GetClientArmor(client);
+        decl String:iName[32];
 
+        GetClientName(client, iName, sizeof(iName));
+
+        strcopy(playerHealthTable[client][Data_playerName], sizeof(iName), iName);
+        playerHealthTable[client][Data_hp] = currentHp;
+        playerHealthTable[client][Data_ap] = currentAp;
+    }
+}
 /**
- *Displays all players current HP
+ *Displays all players on the enemy team's current HP
  **/
 public Action:Command_Hp(client, args)
 {
-    for (new i=1; i<=MAXPLAYERS; i++)
+    new hpCvarEnabled = GetConVarInt(g_cvar_hpEnable);
+    if (hpCvarEnabled != 0)
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        // Figure out which team the client requesting is on so we can only
+        // display the health information of the opposite team
+        //if (!IsFakeClient(client))
+        //{
+        if (IsFakeClient(client))
         {
-            PrintToChat(client, "[GP] %s has %d HP and %d/100AP remaining.", playerHealthTable[i][GetClientTeam(i)][Data_playerName], playerHealthTable[i][GetClientTeam(i)][Data_hp], playerHealthTable[i][GetClientTeam(i)][Data_hp]);
+            PrintToServer("FAKE CLIENT %s", client);
         }
+        new clientId = GetClientOfUserId(client);
+        new team = GetClientTeam(client);
+        PrintToServer("CLIENT INFO: %d", clientId);
+        for (new i=1; i<=MaxClients; i++)
+        {
+            if (IsClientConnected(i) && GetClientTeam(i) != team && GetClientTeam(i) != CS_TEAM_SPECTATOR)
+            {
+                UpdatePlayerHealth(i);
+
+                PrintToChat(client, "[GP] %s --> (%dhp)",
+                            playerHealthTable[i][Data_playerName],
+                            playerHealthTable[i][Data_hp], playerHealthTable[i][Data_hp]);
+            }
+        }
+        return Plugin_Continue;
     }
     return Plugin_Handled;
-}
-public Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
-{
-    new victimId = GetEventInt(event, "userid");
-    decl String:victimName[32];
-    new currentHp = GetClientHealth(victimId);
-    new currentAp = GetClientHealth(victimId);
-    new victim = GetClientOfUserId(victimId);
-    new victimTeam = GetClientTeam(victim);
-    GetClientName(victim, victimName, sizeof(victimName));
-
-    if (IsClientInGame(victim) && IsPlayerAlive(victim) && !IsFakeClient(victim))
-    {
-        strcopy(playerHealthTable[victim][victimTeam][Data_playerName], 32, victimName);
-        playerHealthTable[victim][victimTeam][Data_hp] = currentHp;
-        playerHealthTable[victim][victimTeam][Data_ap] = currentAp;
-    }
 }
 
 /**
@@ -1610,14 +1640,22 @@ public Action:Command_Say(client, const String:command[], argc)
     {
         return Command_Ready(client, 0);
     }
-    if (StrEqual(param, ".hp"))
+    else if (StrEqual(param, ".hp"))
     {
-        return Command_Hp(client, 0);
+        if (!IsPlayerAlive)
+        {
+            return Command_Hp(client, 0);
+        }
+        else
+        {
+            return Plugin_Handled;
+        }
     }
     else
     {
         return Plugin_Continue;
     }
+    return Plugin_Handled;
 }
 
 public Menu_RestartVote(Handle:menu, MenuAction:action, param1, param2){
@@ -1754,22 +1792,155 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
     }
     return Plugin_Continue;
 }
-
+LogKillLocal(const String:steamAttacker[], const String:steamVictim[], const String:weapon[], bool:headshot)
+{
+    new Handle:newArray = CreateArray(24);
+    PushArrayString(newArray, steamAttacker);
+    PushArrayString(newArray, steamVictim);
+    PushArrayString(newArray, weapon);
+    PushArrayCell(newArray, headshot);
+}
+LogKill(attacker, victim, const String:weapon[], bool:headshot)
+{
+    new String:steamAttacker[24];
+    new String:steamVictim[24];
+    GetClientAuthString(attacker, steamAttacker, 24);
+    GetClientAuthString(victim, steamVictim, 24);
+    LogKillLocal(steamAttacker, steamVictim, weapon, headshot);
+}
 /**
  * If we are in a ready up phase just respawn everyone constantly
  */
 public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroadcast)
 {
     new dm = GetConVarInt(g_cvar_idleDeathmatch);
+    new victim = GetClientOfUserId(GetEventInt(event, "userid"));
+    new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+    new String:weapon[64];
+    GetEventString(event, "weapon", weapon, 64);
+    new bool:Headshot = (GetEventInt(event, "headshot")==0)?false:true;
+    if (IsValidPlayer(victim))
+    {
+        if (attacker == victim || attacker == 0)
+        {
+            LogKill(victim, victim, weapon, false);
+        }
+        else if (IsValidPlayer(attacker))
+        {
+            LogKill(attacker, victim, weapon, Headshot);
+        }
+    }
     if (NeedReadyUp() && dm != 0)
     {
-        new userid = GetEventInt(event, "userid");
-        new client = GetClientOfUserId(userid);
-        CreateTimer(2.5, Timer_RespawnPlayer, client);
+        CreateTimer(2.5, Timer_RespawnPlayer, victim);
     }
     return Plugin_Continue;
 }
+PrintDmgReport(client)
+{
+    //Current Rnd
+    new OurTeam = GetClientTeam(client);
+    for(new i=1; i <= MAXPLAYERS; i++)
+    {
+        if (IsValidPlayer(i) && GetClientTeam(i) != OurTeam)
+        {
+            new Handle:dmgRound = hMatchDamage[CurrentRound];
+            new dmgSize = GetArraySize(dmgRound);
+            new dmgTo = 0;
+            new dmgHits = 0;
+            new String:clName[24];
+            GetClientName(i, clName, 24);
+            for (new x=0; x<dmgSize; x++)
+            {
+                new String:Att[24];
+                new String:Vic[24];
+                new Handle:singleDmg = GetArrayCell(dmgRound, x);
+                GetArrayString(singleDmg, 0, Att, 24);
+                GetArrayString(singleDmg, 1, Vic, 24);
+                new dM = GetArrayCell(singleDmg, 2);
+                new IndAtt = ClientOfSteamId(Att);
+                new IndVic = ClientOfSteamId(Vic);
+                if (IsValidPlayer(IndAtt) && IndAtt==client && IndVic==i)
+                {
+                    dmgTo+=dM;
+                    dmgHits++;
+                }
 
+            }
+            PrintToChat(client, "[GP] %s - Damage Dealt: %d (%d hits)", clName, dmgTo, dmgHits);
+        }
+    }
+}
+LogDmg(attacker, victim, dmg)
+{
+    new String:attackerSteam[24];
+    new String:victimSteam[24];
+    GetClientAuthString(attacker, attackerSteam, 24);
+    GetClientAuthString(victim, victimSteam, 24);
+
+    //store in array
+    new Handle:newArray = CreateArray(24);
+    PushArrayString(newArray, attackerSteam);
+    PushArrayString(newArray, victimSteam);
+    PushArrayCell(newArray, dmg);
+    PushArrayCell(hMatchDamage[CurrentRound], newArray);
+}
+public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    new victim = GetClientOfUserId(GetEventInt(event, "userid"));
+    new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
+    new dmg = GetEventInt(event, "dmg_health");
+
+    if (!IsFakeClient(attacker) && IsPlayerAlive(attacker) && !IsFakeClient(attacker) && IsPlayerAlive(attacker))
+    {
+        LogDmg(attacker, victim, dmg);
+    }
+    return Plugin_Continue;
+}
+/**
+ * Callback for beginning of round, sets all player's health in the table to their current values
+ **/
+public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    CurrentRound++;
+    hMatchDamage[CurrentRound] = CreateArray();
+    hMatchKills[CurrentRound] = CreateArray();
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsClientInGame(i) && IsPlayerAlive(i))
+        {
+            decl String:iName[32];
+            new currentHp = GetClientHealth(i);
+            new currentAp = GetClientArmor(i);
+            GetClientName(i, iName, sizeof(iName));
+
+            strcopy(playerHealthTable[i][Data_playerName], sizeof(iName), iName);
+            playerHealthTable[i][Data_hp] = currentHp;
+            playerHealthTable[i][Data_ap] = currentAp;
+        }
+    }
+    return Plugin_Continue;
+}
+/**
+ * Callback triggered at round end, zeroes out the player health table
+ **/
+public Action:Event_RoundEnd(Handle:event, const String:name[], bool:dontBroadcast)
+{
+    for (new i = 1; i < MaxClients; i++)
+    {
+        //if (IsClientInGame(client) && IsPlayerAlive(client) && !IsFakeClient(client))
+        if (IsClientInGame(i))
+        {
+            if (GetClientTeam(i) == CS_TEAM_T || GetClientTeam(i) == CS_TEAM_CT)
+            {
+                playerHealthTable[i][Data_playerName] = 0;
+                playerHealthTable[i][Data_hp] = 0;
+                playerHealthTable[i][Data_ap] = 0;
+            }
+        }
+    }   
+    return Plugin_Continue;
+}
 /**
  * Respawns the specified player
  */
@@ -1896,7 +2067,7 @@ public Action:Event_PlayerDisconnect(
         case MS_LIVE:
         {
             /*
-             * Start a reconnect grace timer. After which, hold a vote to
+             * Start ea reconnect grace timer. After which, hold a vote to
              * forfeit, play man down, or allow any replacement player from
              * spec to fill in.
              */
@@ -1914,4 +2085,20 @@ public Action:Event_PlayerDisconnect(
     }
 
     return Plugin_Continue;
+}
+ClientOfSteamId(const String:steamID[])
+{
+    for(new i=1;i<=MAXPLAYERS;i++)
+    {
+        if(IsValidPlayer(i))
+        {
+            new String:mySteam[24];
+            GetClientAuthString(i, mySteam, 24);
+            if(StrEqual(steamID, mySteam))
+            {
+                return i;
+            }
+        }
+    }
+    return 0;
 }
