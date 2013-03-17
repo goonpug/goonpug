@@ -1692,24 +1692,6 @@ public Action:Command_Say(client, const String:command[], argc)
     {
         return Command_Hp(client, 0);
     }
-    else if (StrEqual(param, ".randomize"))
-    {
-        if (GetConVarInt(g_cvar_randomTeams) == 0)
-        {
-            SetConVarInt(g_cvar_randomTeams, 1);
-        }
-        else if (GetConVarInt(g_cvar_randomTeams) == 1)
-        {
-            SetConVarInt(g_cvar_randomTeams, 0);
-        }
-        PrintToChatAll("[GP] Random team selection has been set to %d",
-                        GetConVarInt(g_cvar_randomTeams));
-        return Plugin_Handled;
-    }
-    else if (StrEqual(param, ".dmg"))
-    {
-        PrintDmgReport(client);
-    }
     else
     {
         return Plugin_Continue;
