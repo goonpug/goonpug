@@ -1871,10 +1871,6 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
             LogKill(attacker, victim, weapon, Headshot);
         }
     }
-    if(g_matchState == MS_LIVE)
-    {
-        PrintDmgReport(victim);
-    }
     if (NeedReadyUp() && dm != 0)
     {
         CreateTimer(2.5, Timer_RespawnPlayer, victim);
