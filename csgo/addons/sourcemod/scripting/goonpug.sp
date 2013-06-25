@@ -38,8 +38,8 @@
 #include <sdktools>
 #include <sdktools_functions>
 
-#define GOONPUG_VERSION "0.0.4"
-#define MAX_ROUNDS 50 //for now
+#define GOONPUG_VERSION "0.0.5"
+#define MAX_ROUNDS 128
 #define STEAMID_LEN 32
 
 /**
@@ -60,7 +60,6 @@ MS_POST_MATCH,
 // Global convar handles
 new Handle:g_cvar_maxPugPlayers = INVALID_HANDLE;
 new Handle:g_cvar_idleDeathmatch = INVALID_HANDLE;
-new Handle:g_cvar_tvEnable = INVALID_HANDLE;
 new Handle:g_cvar_hpEnable = INVALID_HANDLE;
 
 
@@ -93,6 +92,9 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 // Grace timer handles
 new Handle:g_graceTimerTrie = INVALID_HANDLE;
 
+// Reconnect cash handling
+new Handle:g_cashTrie = INVALID_HANDLE;
+
 /* Vector for all the damage */
 new Handle:hMatchDamage[MAX_ROUNDS]; 
 /* Vector for all the kills */
@@ -117,7 +119,7 @@ name = "GoonPUG",
 author = "astroman <peter@pmrowla.com>",
 description = "CS:GO PUG Plugin",
 version = GOONPUG_VERSION,
-url = "http://github.com/pmrowla/goonpug",
+url = "http://github.com/goonpug/goonpug",
 }
 
 /**
@@ -135,7 +137,6 @@ public OnPluginStart()
                                         "Use deathmatch respawning during warmup rounds",
                                         FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_NOTIFY);
     g_cvar_hpEnable = CreateConVar("gp_echohp", "1", "Enabled/disables dead players ability to use /hp(1 | 0)", FCVAR_PLUGIN|FCVAR_REPLICATED|FCVAR_NOTIFY);
-    g_cvar_tvEnable = FindConVar("tv_enable");
 
     new pugPlayers = GetConVarInt(g_cvar_maxPugPlayers);
     if ((pugPlayers % 2) != 0)
@@ -171,12 +172,12 @@ public OnPluginStart()
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     HookEvent("player_death", Event_PlayerDeath);
-    HookEvent("player_hurt", Event_PlayerHurt);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 
     g_graceTimerTrie = CreateTrie();
     g_playerTeamTrie = CreateTrie();
     g_playerTeamKeys = CreateArray(STEAMID_LEN);
+    g_cashTrie = CreateTrie();
 }
 
 public OnPluginEnd()
@@ -190,6 +191,11 @@ public OnPluginEnd()
     {
         ClearTrie(g_graceTimerTrie);
         CloseHandle(g_graceTimerTrie);
+    }
+    if (g_cashTrie != INVALID_HANDLE)
+    {
+        ClearTrie(g_cashTrie);
+        CloseHandle(g_cashTrie);
     }
 }
 
@@ -216,18 +222,20 @@ public OnClientAuthorized(client, const String:auth[])
     decl Handle:timer;
     if (GetTrieValue(g_graceTimerTrie, auth, timer))
     {
+        decl team;
+        GetTrieValue(g_playerTeamTrie, auth, team);
+
+        if (team == CS_TEAM_CT)
+        {
+            g_ctSlots--;
+        }
+        else if (team == CS_TEAM_T)
+        {
+            g_tSlots--;
+        }
+
         KillTimer(timer);
     }
-}
-
-bool:IsTvEnabled()
-{
-    if (g_cvar_tvEnable == INVALID_HANDLE)
-    {
-        return false;
-    }
-
-    return GetConVarBool(g_cvar_tvEnable);
 }
 
 public OnMapStart()
@@ -256,6 +264,7 @@ public OnMapStart()
 public OnMapEnd()
 {
     ClearTrie(g_graceTimerTrie);
+    ClearTrie(g_cashTrie);
     CloseMapLists();
 }
 
@@ -269,11 +278,11 @@ ReadMapLists()
     new serial = -1;
     g_pugMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_match");
     if (g_pugMapList == INVALID_HANDLE)
-        ThrowError("Could not read find goonpug_match maplist");
+        ThrowError("Could not read find goonpug_match_maplist");
 
     g_idleMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_idle");
     if (g_idleMapList == INVALID_HANDLE)
-        ThrowError("Could not find goonpug_idle maplist");
+        ThrowError("Could not find goonpug_idle_maplist");
 }
 
 /**
@@ -355,7 +364,7 @@ Handle:BuildMapVoteMenu()
     new Handle:maplist = CloneArray(g_pugMapList);
     for (new i = GetArraySize(g_pugMapList); i > 0; i--)
     {
-        decl String:mapname[64];
+        decl String:mapname[256];
         new index = GetRandomInt(0, i - 1);
         GetArrayString(maplist, index, mapname, sizeof(mapname));
         if (IsMapValid(mapname))
@@ -393,7 +402,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_VoteEnd:
         {
             decl winningVotes, totalVotes;
-            decl String:mapname[64];
+            decl String:mapname[256];
             GetMenuVoteInfo(param2, winningVotes, totalVotes);
             new Float:percentage = (winningVotes / totalVotes) * 100.0;
             GetMenuItem(menu, param1, mapname, sizeof(mapname));
@@ -406,7 +415,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             if (param1 == VoteCancel_NoVotes)
             {
                 new len = GetArraySize(g_pugMapList);
-                decl String:mapname[64];
+                decl String:mapname[256];
                 GetArrayString(g_pugMapList, GetRandomInt(0, len - 1),
                                mapname, sizeof(mapname));
                 PrintToChatAll("[GP] No votes received, using random map: %s.",
@@ -756,6 +765,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
 
 ClearTeams()
 {
+    ClearTrie(g_cashTrie);
     ClearTrie(g_playerTeamTrie);
     ClearArray(g_playerTeamKeys);
 }
@@ -849,7 +859,7 @@ public Action:Timer_PickTeams(Handle:timer)
     {
         PrintToChatAll("[GP] Done picking teams.");
 
-        decl String:curmap[64];
+        decl String:curmap[256];
         GetCurrentMap(curmap, sizeof(curmap));
         if (!StrEqual(curmap, g_matchMap))
         {
@@ -1029,24 +1039,23 @@ public Action:Timer_MatchInfo(Handle:timer)
 
 StartServerDemo()
 {
-    if (IsTvEnabled())
-    {
         ServerCommand("tv_stoprecord\n");
         new time = GetTime();
         decl String:timestamp[128];
-        FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
-        decl String:map[64];
+        FormatTime(timestamp, sizeof(timestamp), "%F_%H.%M", time);
+        decl String:map[256];
         GetCurrentMap(map, sizeof(map));
-        ServerCommand("tv_record %s_%s\n", timestamp, map);
-    }
+        /* Strip workshop prefixes */
+        decl String:strs[3][256];
+        new numStrs = ExplodeString(map, "/", strs, 3, 256);
+        
+        ServerCommand("tv_record %s_%s.dem\n", timestamp, strs[numStrs - 1]);
+        PrintToChatAll("[GP] Recording server demo: %s_%s.dem",  timestamp, strs[numStrs - 1]);
 }
 
 StopServerDemo()
 {
-    if (IsTvEnabled())
-    {
         ServerCommand("tv_stoprecord\n");
-    }
 }
 
 /**
@@ -1091,6 +1100,7 @@ public Action:Timer_Lo3Third(Handle:timer)
     if (g_matchState != MS_LO3)
         return Plugin_Stop;
 
+    ClearTrie(g_cashTrie);
     ChangeMatchState(MS_LIVE);
     LogToGame("GoonPUG triggered \"Start_Match\"");
     PrintCenterTextAll("LIVE! LIVE! LIVE!");
@@ -1133,7 +1143,7 @@ public Action:Timer_MatchMap(Handle:timer)
         return Plugin_Stop;
 
     ChangeMatchState(MS_PRE_LIVE);
-    decl String:map[64];
+    decl String:map[256];
     GetNextMap(map, sizeof(map));
     ForceChangeLevel(map, "Changing to match map");
 
@@ -1249,7 +1259,7 @@ PostMatch()
     LogToGame("GoonPUG triggered \"End_Match\"");
 
     // Set the nextmap to a warmup map
-    decl String:map[64];
+    decl String:map[256];
     GetArrayString(g_idleMapList, GetRandomInt(0, GetArraySize(g_idleMapList) - 1), map, sizeof(map));
     SetNextMap(map);
     PrintToChatAll("[GP] Switching to idle phase in 15 seconds...");
@@ -1261,7 +1271,7 @@ PostMatch()
  */
 public Action:Timer_IdleMap(Handle:timer)
 {
-    decl String:map[64];
+    decl String:map[256];
     GetNextMap(map, sizeof(map));
     ChangeMatchState(MS_WARMUP);
     ForceChangeLevel(map, "Changing to idle map");
@@ -1642,7 +1652,7 @@ public Action:Command_Say(client, const String:command[], argc)
     }
     else if (StrEqual(param, ".hp"))
     {
-        if (!IsPlayerAlive)
+        if (!IsPlayerAlive(client))
         {
             return Command_Hp(client, 0);
         }
@@ -1655,7 +1665,6 @@ public Action:Command_Say(client, const String:command[], argc)
     {
         return Plugin_Continue;
     }
-    return Plugin_Handled;
 }
 
 public Menu_RestartVote(Handle:menu, MenuAction:action, param1, param2){
@@ -1704,6 +1713,17 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         decl assignedTeam;
         if (GetTrieValue(g_playerTeamTrie, steamId, assignedTeam))
         {
+
+            decl cash;
+            if (GetTrieValue(g_cashTrie, steamId, cash))
+            {
+                SetEntProp(client, Prop_Send, "m_iAccount", cash);
+
+                decl String:playerName[64];
+                GetClientName(client, playerName, sizeof(playerName));
+                PrintToChatAll("[GP] Restored money for player %s", playerName);
+            }
+
             // player is assigned to a match team
             if (assignedTeam == CS_TEAM_CT)
             {
@@ -1762,6 +1782,8 @@ public Action:Command_Jointeam(client, const String:command[], argc)
  */
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
+    ClearTrie(g_cashTrie);
+
     for (new i = 0; i < GetArraySize(g_playerTeamKeys); i++)
     {
         decl String:steamId[STEAMID_LEN];
@@ -1792,22 +1814,7 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
     }
     return Plugin_Continue;
 }
-LogKillLocal(const String:steamAttacker[], const String:steamVictim[], const String:weapon[], bool:headshot)
-{
-    new Handle:newArray = CreateArray(24);
-    PushArrayString(newArray, steamAttacker);
-    PushArrayString(newArray, steamVictim);
-    PushArrayString(newArray, weapon);
-    PushArrayCell(newArray, headshot);
-}
-LogKill(attacker, victim, const String:weapon[], bool:headshot)
-{
-    new String:steamAttacker[24];
-    new String:steamVictim[24];
-    GetClientAuthString(attacker, steamAttacker, 24);
-    GetClientAuthString(victim, steamVictim, 24);
-    LogKillLocal(steamAttacker, steamVictim, weapon, headshot);
-}
+
 /**
  * If we are in a ready up phase just respawn everyone constantly
  */
@@ -1815,88 +1822,15 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 {
     new dm = GetConVarInt(g_cvar_idleDeathmatch);
     new victim = GetClientOfUserId(GetEventInt(event, "userid"));
-    new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-    new String:weapon[64];
-    GetEventString(event, "weapon", weapon, 64);
-    new bool:Headshot = (GetEventInt(event, "headshot")==0)?false:true;
-    if (IsValidPlayer(victim))
-    {
-        if (attacker == victim || attacker == 0)
-        {
-            LogKill(victim, victim, weapon, false);
-        }
-        else if (IsValidPlayer(attacker))
-        {
-            LogKill(attacker, victim, weapon, Headshot);
-        }
-    }
+
     if (NeedReadyUp() && dm != 0)
     {
         CreateTimer(2.5, Timer_RespawnPlayer, victim);
     }
+
     return Plugin_Continue;
 }
-PrintDmgReport(client)
-{
-    //Current Rnd
-    new OurTeam = GetClientTeam(client);
-    for(new i=1; i <= MAXPLAYERS; i++)
-    {
-        if (IsValidPlayer(i) && GetClientTeam(i) != OurTeam)
-        {
-            new Handle:dmgRound = hMatchDamage[CurrentRound];
-            new dmgSize = GetArraySize(dmgRound);
-            new dmgTo = 0;
-            new dmgHits = 0;
-            new String:clName[24];
-            GetClientName(i, clName, 24);
-            for (new x=0; x<dmgSize; x++)
-            {
-                new String:Att[24];
-                new String:Vic[24];
-                new Handle:singleDmg = GetArrayCell(dmgRound, x);
-                GetArrayString(singleDmg, 0, Att, 24);
-                GetArrayString(singleDmg, 1, Vic, 24);
-                new dM = GetArrayCell(singleDmg, 2);
-                new IndAtt = ClientOfSteamId(Att);
-                new IndVic = ClientOfSteamId(Vic);
-                if (IsValidPlayer(IndAtt) && IndAtt==client && IndVic==i)
-                {
-                    dmgTo+=dM;
-                    dmgHits++;
-                }
 
-            }
-            PrintToChat(client, "[GP] %s - Damage Dealt: %d (%d hits)", clName, dmgTo, dmgHits);
-        }
-    }
-}
-LogDmg(attacker, victim, dmg)
-{
-    new String:attackerSteam[24];
-    new String:victimSteam[24];
-    GetClientAuthString(attacker, attackerSteam, 24);
-    GetClientAuthString(victim, victimSteam, 24);
-
-    //store in array
-    new Handle:newArray = CreateArray(24);
-    PushArrayString(newArray, attackerSteam);
-    PushArrayString(newArray, victimSteam);
-    PushArrayCell(newArray, dmg);
-    PushArrayCell(hMatchDamage[CurrentRound], newArray);
-}
-public Action:Event_PlayerHurt(Handle:event, const String:name[], bool:dontBroadcast)
-{
-    new victim = GetClientOfUserId(GetEventInt(event, "userid"));
-    new attacker = GetClientOfUserId(GetEventInt(event, "attacker"));
-    new dmg = GetEventInt(event, "dmg_health");
-
-    if (!IsFakeClient(attacker) && IsPlayerAlive(attacker) && !IsFakeClient(attacker) && IsPlayerAlive(attacker))
-    {
-        LogDmg(attacker, victim, dmg);
-    }
-    return Plugin_Continue;
-}
 /**
  * Callback for beginning of round, sets all player's health in the table to their current values
  **/
@@ -1921,6 +1855,7 @@ public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroad
     }
     return Plugin_Continue;
 }
+
 /**
  * Callback triggered at round end, zeroes out the player health table
  **/
@@ -2075,6 +2010,8 @@ public Action:Event_PlayerDisconnect(
             if (GetTrieValue(g_playerTeamTrie, steamId, team)
                 && (team == CS_TEAM_CT || team == CS_TEAM_T))
             {
+                new cash = GetEntProp(client, Prop_Send, "m_iAccount");
+                SetTrieValue(g_cashTrie, steamId, cash);
                 StartGraceTimer(playerName, steamId);
             }
         }
@@ -2085,20 +2022,4 @@ public Action:Event_PlayerDisconnect(
     }
 
     return Plugin_Continue;
-}
-ClientOfSteamId(const String:steamID[])
-{
-    for(new i=1;i<=MAXPLAYERS;i++)
-    {
-        if(IsValidPlayer(i))
-        {
-            new String:mySteam[24];
-            GetClientAuthString(i, mySteam, 24);
-            if(StrEqual(steamID, mySteam))
-            {
-                return i;
-            }
-        }
-    }
-    return 0;
 }
