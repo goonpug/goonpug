@@ -5,6 +5,9 @@ compiler: gcc
 
 before_install:
     - git submodule update --init --recursive
+    # travis now uses 64-bit vm's, so we need to install 32-bit libc-dev
+    - sudo apt-get update -qq
+    - sudo apt-get install libc6-dev-i386 -qq 
 
 branches:
     only:

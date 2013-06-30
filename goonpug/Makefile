@@ -51,7 +51,6 @@ endif
 
 INCLUDE += -I. -I.. -I$(HL2PUB) -I$(HL2PUB)/engine -I$(HL2PUB)/mathlib -I$(HL2PUB)/vstdlib \
 	-I$(HL2PUB)/tier0 -I$(HL2PUB)/tier1 -I. -I$(METAMOD) -I$(METAMOD)/sourcehook \
-	-I$(HL2PUB)/game/shared/csgo/protobuf -I$(HL2PUB)/engine/protobuf \
 	-I$(HL2SDK)/common/protobuf-2.3.0/src
 
 BINARY = $(PROJECT).$(LIB_EXT)
@@ -79,7 +78,8 @@ endif
 CFLAGS += -DPOSIX -Dstricmp=strcasecmp -D_stricmp=strcasecmp -D_strnicmp=strncasecmp \
 	-Dstrnicmp=strncasecmp -D_snprintf=snprintf -D_vsnprintf=vsnprintf -D_alloca=alloca \
 	-Dstrcmpi=strcasecmp -DCOMPILER_GCC -Wall -Wno-non-virtual-dtor -Wno-overloaded-virtual \
-	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
+	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing \
+	-DGOOGLE_PROTOBUF_NO_RTTI
 
 # Clang || GCC >= 4
 ifeq "$(shell expr $(IS_CLANG) \| $(CC_MAJOR) \>= 4)" "1"
@@ -108,11 +108,17 @@ debug: CFLAGS += $(DEBUG_FLAGS)
 debug: OPT_FLAGS = 
 debug: all
 
+CC_FILES := $(wildcard *.cc)
+CC_OBJS := $(patsubst %.cc, %.o, $(CC_FILES))
 CPP_FILES := $(wildcard *.cpp)
-OBJ_FILES := $(patsubst %.cpp, %.o, $(CPP_FILES))
+CPP_OBJS := $(patsubst %.cpp, %.o, $(CPP_FILES))
+OBJ_FILES := $(CPP_OBJS) $(CC_OBJS)
 
 $(BINARY): $(OBJ_FILES)
 	$(CC) $(INCLUDE) -m32 $(LINK) -ldl -lm -o $(BIN_DIR)/$@ $^
+
+%.o: %.cc
+	$(CC) $(INCLUDE) $(CFLAGS) $(OPT_FLAGS) -c -o $@ $<
 
 %.o: %.cpp
 	$(CC) $(INCLUDE) $(CFLAGS) $(OPT_FLAGS) -c -o $@ $<

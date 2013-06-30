@@ -47,6 +47,7 @@ IGameEventManager2 *gameevents = NULL;
 IServerPluginCallbacks *vsp_callbacks = NULL;
 IPlayerInfoManager *playerinfomanager = NULL;
 ICvar *icvar = NULL;
+CGlobalVars *gpGlobals = NULL;
 
 // Hook declarations
 
@@ -78,6 +79,8 @@ bool GoonpugPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen,
     GET_V_IFACE_ANY(GetServerFactory, gameclients, IServerGameClients, INTERFACEVERSION_SERVERGAMECLIENTS);
     GET_V_IFACE_ANY(GetServerFactory, playerinfomanager, IPlayerInfoManager, INTERFACEVERSION_PLAYERINFOMANAGER);
 
+    gpGlobals = ismm->GetCGlobals();
+
     META_LOG(g_PLAPI, "Starting plugin.");
 
     /* Load the VSP listener.  This is usually needed for IServerPluginHelpers. */
@@ -99,8 +102,31 @@ bool GoonpugPlugin::Load(PluginId id, ISmmAPI *ismm, char *error, size_t maxlen,
 bool GoonpugPlugin::Unload(char *error, size_t maxlen)
 {
     // Unload hooks
-	SH_REMOVE_HOOK_MEMFUNC(IServerGameClients, ClientCommand, gameclients, this, &GoonpugPlugin::Hook_ClientCommand, false);
+    SH_REMOVE_HOOK_MEMFUNC(IServerGameClients, ClientCommand, gameclients, this, &GoonpugPlugin::Hook_ClientCommand, false);
     return true;
+}
+
+bool GoonpugPlugin::Pause(char *error, size_t maxlen)
+{
+	return true;
+}
+
+bool GoonpugPlugin::Unpause(char *error, size_t maxlen)
+{
+	return true;
+}
+
+
+void GoonpugPlugin::OnVSPListening(IServerPluginCallbacks *iface)
+{
+	vsp_callbacks = iface;
+}
+
+void GoonpugPlugin::AllPluginsLoaded()
+{
+	/* This is where we'd do stuff that relies on the mod or other plugins 
+	 * being initialized (for example, cvars added and events registered).
+	 */
 }
 
 /**
@@ -108,20 +134,20 @@ bool GoonpugPlugin::Unload(char *error, size_t maxlen)
  */
 void GoonpugPlugin::Hook_ClientCommand(edict_t *pEntity, const CCommand &args)
 {
-	if (!pEntity || pEntity->IsFree())
-	{
-		return;
-	}
+    if (!pEntity || pEntity->IsFree())
+    {
+        return;
+    }
 
-	const char *cmd = args.Arg(0);
-	if (strcmp(cmd, "say") == 0 || strcmp(cmd, "say_team") == 0 || strcmp(cmd, "say2") == 0)
-	{
+    const char *cmd = args.Arg(0);
+    if (strcmp(cmd, "say") == 0 || strcmp(cmd, "say_team") == 0 || strcmp(cmd, "say2") == 0)
+    {
         Command_Say(pEntity, args);
-	}
-	else if (strcmp(cmd, "jointeam") == 0)
-	{
+    }
+    else if (strcmp(cmd, "jointeam") == 0)
+    {
         Command_Jointeam(pEntity, args);
-	}
+    }
 }
 
 /**
@@ -129,7 +155,7 @@ void GoonpugPlugin::Hook_ClientCommand(edict_t *pEntity, const CCommand &args)
  */
 void GoonpugPlugin::Command_Say(edict_t *pEntity, const CCommand &args)
 {
-	const char *cmd = args.Arg(0);
+    const char *cmd = args.Arg(0);
     size_t len = strlen(cmd);
     char *tmp;
 
