@@ -109,7 +109,13 @@ debug: OPT_FLAGS =
 debug: all
 
 CPP_FILES := $(wildcard *.cpp)
-OBJ_FILES := $(patsubst %.cpp, %.o, $(CPP_FILES))
+OBJ_FILES := $(patsubst %.cpp, %.o, $(CPP_FILES)) protobuf.o
+
+protobuf.o: \
+	$(HL2PUB)/game/shared/csgo/protobuf/cstrike15_usermessage_helpers.cpp \
+	$(HL2PUB)/game/shared/csgo/protobuf/cstrike15_usermessages.pb.cc \
+	$(HL2PUB)/engine/protobuf/netmessages.pb.cc
+	$(CC) $(INCLUDE) $(CFLAGS) $(OPT_FLAGS) -c -o $@ $<
 
 $(BINARY): $(OBJ_FILES)
 	$(CC) $(INCLUDE) -m32 $(LINK) -ldl -lm -o $(BIN_DIR)/$@ $^
