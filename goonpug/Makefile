@@ -78,7 +78,8 @@ endif
 CFLAGS += -DPOSIX -Dstricmp=strcasecmp -D_stricmp=strcasecmp -D_strnicmp=strncasecmp \
 	-Dstrnicmp=strncasecmp -D_snprintf=snprintf -D_vsnprintf=vsnprintf -D_alloca=alloca \
 	-Dstrcmpi=strcasecmp -DCOMPILER_GCC -Wall -Wno-non-virtual-dtor -Wno-overloaded-virtual \
-	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing
+	-Werror -Wno-error=sign-compare -fPIC -fno-exceptions -fno-rtti -msse -m32 -fno-strict-aliasing \
+	-DGOOGLE_PROTOBUF_NO_RTTI
 
 # Clang || GCC >= 4
 ifeq "$(shell expr $(IS_CLANG) \| $(CC_MAJOR) \>= 4)" "1"
