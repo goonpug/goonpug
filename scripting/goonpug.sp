@@ -115,8 +115,6 @@ new String:g_demoname[PLATFORM_MAX_PATH];
 
 new Handle:hTeam1 = INVALID_HANDLE;
 new Handle:hTeam2 = INVALID_HANDLE;
-new Handle:hPlayerTeams = INVALID_HANDLE;
-new Handle:hPlayerTeamKeys = INVALID_HANDLE;
 new Handle:hSaveCash = INVALID_HANDLE;
 new Handle:hSaveKills = INVALID_HANDLE;
 new Handle:hSaveAssists = INVALID_HANDLE;
@@ -698,7 +696,7 @@ public Action:Timer_ReadyUp(Handle:timer)
             new bool:first = true;
             for (new j = 1; j <= MaxClients; j++)
             {
-                if (j != i && IsValidPlayer(j) && !IsFakeClient(j))
+                if (IsValidPlayer(j) && !IsFakeClient(j))
                 {
                     decl String:name[64];
                     GetClientName(j, name, sizeof(name));
@@ -1110,11 +1108,6 @@ ChooseCaptains()
     StartMatchInfoText();
 
     SortPlayersByRws();
-    for (new j = 0; j < GetArraySize(hSortedClients); j++)
-    {
-        new n = GetArrayCell(hSortedClients, j);
-        PrintToServer("%d: %d", j, n);
-    }
 
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
     SetMenuTitle(menu, "Vote for captains (RWS in parentheses)");
@@ -1459,8 +1452,8 @@ LockAndClearTeams()
 
 ClearTeams()
 {
-    ClearTrie(hPlayerTeams);
-    ClearArray(hPlayerTeamKeys);
+    ClearArray(hTeam1);
+    ClearArray(hTeam2);
 }
 
 ForceAllSpec()
@@ -1821,7 +1814,7 @@ CountActivePlayers(GpTeam:team)
         decl String:auth[STEAMID_LEN];
         GetArrayString(hTeam, i, auth, sizeof(auth));
         new client = FindClientByAuthString(auth);
-        if (client >= 0 && GetClientTeam(client) != CS_TEAM_SPECTATOR)
+        if (client > 0)
             count++;
     }
 
