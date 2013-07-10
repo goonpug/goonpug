@@ -66,7 +66,7 @@ new MatchState:g_matchState = MS_WARMUP;
 
 // This value could possibly change for certain game types (2v2/3v3 ladders
 // etc)
-new g_maxPlayers = 10;
+new g_maxPlayers = 4;
 
 // Global handles
 
@@ -360,9 +360,9 @@ public OnMapEnd()
 
 DoPreLive()
 {
+    ServerCommand("mp_warmup_start\n");
     new Handle:warmup = FindConVar("mp_warmup_pausetimer");
     SetConVarInt(warmup, 1);
-    ServerCommand("mp_warmup_start\n");
     SetTeamNames(g_capt1, g_capt2);
     StartReadyUp(true);
 }
@@ -1258,12 +1258,12 @@ DetermineFirstPick()
     }
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt1, capt1rws);
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
-    if (capt1rws > capt2rws)
+    if (capt1rws < capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
         g_firstPick = 0;
     }
-    else if (capt1rws < capt2rws)
+    else if (capt1rws > capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
         g_firstPick = 1;
@@ -1594,6 +1594,7 @@ public Action:Timer_PickTeams(Handle:timer)
                 }
             }
             SortADTArrayCustom(hSortedClients, RwsSortDescending);
+            pickCount = 1;
         }
         else if (pickCount == 2)
         {
@@ -1626,10 +1627,11 @@ Handle:BuildPickMenu()
     new Handle:menu = CreateMenu(Menu_PickPlayer);
     for (new i = 0; i < GetArraySize(hSortedClients); i++)
     {
+        new client = GetArrayCell(hSortedClients, i);
         decl String:name[64];
-        GetClientName(GetArrayCell(hSortedClients, i), name, sizeof(name));
+        GetClientName(client, name, sizeof(name));
         decl String:auth[STEAMID_LEN];
-        GetClientAuthString(i, auth, sizeof(auth));
+        GetClientAuthString(client, auth, sizeof(auth));
         decl Float:rws;
         if (!GetTrieValue(hPlayerRws, auth, rws))
             rws = 0.0;
