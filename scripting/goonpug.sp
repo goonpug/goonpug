@@ -663,7 +663,7 @@ bool:NeedReadyUp()
 {
     switch (g_matchState)
     {
-        case MS_LIVE, MS_POST_MATCH:
+        case MS_LIVE, MS_POST_MATCH, MS_OT:
         {
             return false;
         }
@@ -684,31 +684,43 @@ public Action:Timer_ReadyUp(Handle:timer)
         return Plugin_Stop;
     }
 
-    decl String:msg[1024];
-    Format(msg, sizeof(msg), "Ready: %d/%d\n", readyCount, g_maxPlayers);
-    StrCat(msg, sizeof(msg), "Not Ready: ");
-
-    new bool:first = true;
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
-            decl String:name[64];
-            GetClientName(i, name, sizeof(name));
-            if (!g_playerReady[i])
+            decl String:msg[1024];
+            Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, g_maxPlayers);
+
+            if (g_playerReady[i])
+                StrCat(msg, sizeof(msg), "You are ready\n");
+            else
+                StrCat(msg, sizeof(msg), "Say .ready to ready up\n");
+            new bool:first = true;
+            for (new j = 1; j <= MaxClients; j++)
             {
-                if (!first)
-                    StrCat(msg, sizeof(msg), ", ");
-                else
-                    first = false;
-                StrCat(msg, sizeof(msg), name);
+                if (j != i && IsValidPlayer(j) && !IsFakeClient(j))
+                {
+                    decl String:name[64];
+                    GetClientName(j, name, sizeof(name));
+                    if (!g_playerReady[j])
+                    {
+                        if (first)
+                        {
+                            StrCat(msg, sizeof(msg), "Not Ready: ");
+                            first = false;
+                        }
+                        else
+                            StrCat(msg, sizeof(msg), ", ");
+                        StrCat(msg, sizeof(msg), name);
+                    }
+                }
             }
+
+            new Handle:pb = StartMessageOne("KeyHintText", i);
+            PbAddString(pb, "hints", msg);
+            EndMessage();
         }
     }
-
-    new Handle:pb = StartMessageAll("KeyHintText");
-    PbAddString(pb, "hints", msg);
-    EndMessage();
 
     return Plugin_Continue;
 }
@@ -756,30 +768,26 @@ public Action:Command_Say(client, const String:command[], argc)
  */
 public Action:Command_Ready(client, args)
 {
-    switch (g_matchState)
+    if (!NeedReadyUp())
     {
-        case MS_WARMUP:
-        {
-            if (g_playerReady[client])
-            {
-                PrintToChat(client, "[GP] You are already ready.");
-            }
-            else if (CountReady() < g_maxPlayers)
-            {
-                decl String:name[64];
-                GetClientName(client, name, sizeof(name));
-                g_playerReady[client] = true;
-                PrintToChatAll("[GP] %s is now ready.", name);
-            }
-            else
-            {
-                PrintToChat(client, "[GP] Maximum number of players already readied up.");
-            }
-        }
-        default:
-        {
-            PrintToChat(client, "[GP] You don't need to ready up right now.");
-        }
+        PrintToChat(client, "[GP] You don't need to ready up right now.");
+        return Plugin_Handled;
+    }
+
+    if (g_playerReady[client])
+    {
+        PrintToChat(client, "[GP] You are already ready.");
+    }
+    else if (CountReady() < g_maxPlayers)
+    {
+        decl String:name[64];
+        GetClientName(client, name, sizeof(name));
+        g_playerReady[client] = true;
+        PrintToChatAll("[GP] %s is now ready.", name);
+    }
+    else
+    {
+        PrintToChat(client, "[GP] Maximum number of players already readied up.");
     }
 
     return Plugin_Handled;
@@ -793,6 +801,7 @@ public Action:Command_Unready(client, args)
     if (!NeedReadyUp())
     {
         PrintToChat(client, "[GP] You don't need to ready up right now.");
+        return Plugin_Handled;
     }
 
     if (!g_playerReady[client])
@@ -1064,20 +1073,22 @@ StartMatchInfoText()
 public Action:Timer_MatchInfo(Handle:timer)
 {
     decl String:msg[256];
+    decl String:mapname[MAX_MAPNAME_LEN];
+    decl String:strs[3][MAX_MAPNAME_LEN];
 
     switch (g_matchState)
     {
         case MS_PICK_CAPTAINS:
         {
-            decl String:mapname[MAX_MAPNAME_LEN];
             GetNextMap(mapname, sizeof(mapname));
-            Format(msg, sizeof(msg), "Map: %s\n", mapname);
+            new numStrs = ExplodeString(mapname, "/", strs, 3, 256);
+            Format(msg, sizeof(msg), "Map: %s\n", strs[numStrs - 1]);
         }
         case MS_PICK_TEAMS:
         {
-            decl String:mapname[MAX_MAPNAME_LEN];
             GetNextMap(mapname, sizeof(mapname));
-            Format(msg, sizeof(msg), "Map: %s\nTeam %s vs Team %s", mapname, g_capt1, g_capt2);
+            new numStrs = ExplodeString(mapname, "/", strs, 3, 256);
+            Format(msg, sizeof(msg), "Map: %s\nTeam %s vs Team %s", strs[numStrs - 1], g_capt1, g_capt2);
         }
         default:
         {
@@ -1097,10 +1108,13 @@ ChooseCaptains()
 {
     g_matchState = MS_PICK_CAPTAINS;
     StartMatchInfoText();
-    PrintToChatAll("[GP] Now voting for team captains.");
-    PrintToChatAll("[GP] Top two vote getters will be selected.");
 
     SortPlayersByRws();
+    for (new j = 0; j < GetArraySize(hSortedClients); j++)
+    {
+        new n = GetArrayCell(hSortedClients, j);
+        PrintToServer("%d: %d", j, n);
+    }
 
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
     SetMenuTitle(menu, "Vote for captains (RWS in parentheses)");
@@ -1114,9 +1128,9 @@ ChooseCaptains()
         if (g_playerReady[client])
         {
             decl String:auth[STEAMID_LEN];
-            GetClientAuthString(i, auth, sizeof(auth));
+            GetClientAuthString(client, auth, sizeof(auth));
             decl String:name[64];
-            GetClientName(i, name, sizeof(name));
+            GetClientName(client, name, sizeof(name));
             decl Float:rws;
             GetTrieValue(hPlayerRws, auth, rws);
             decl String:display[64];
@@ -1134,6 +1148,7 @@ ChooseCaptains()
         PrintToChatAll("[GP] Not enough valid captains. Scrambling teams.");
         // TODO: If count < 2, just scramble teams
         CloseHandle(menu);
+        return;
     }
     else if (count == 2)
     {
@@ -1142,7 +1157,11 @@ ChooseCaptains()
         GetMenuItem(menu, 1, g_capt2, sizeof(g_capt2));
         CloseHandle(menu);
         DetermineFirstPick();
+        return;
     }
+
+    PrintToChatAll("[GP] Now voting for team captains.");
+    PrintToChatAll("[GP] Top two vote getters will be selected.");
 
     SetMenuExitButton(menu, false);
     SetVoteResultCallback(menu, VoteHandler_CaptainsVote);
