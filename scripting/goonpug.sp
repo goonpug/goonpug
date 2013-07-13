@@ -360,11 +360,11 @@ public OnMapEnd()
 
 DoPreLive()
 {
+    StartReadyUp(true);
     ServerCommand("mp_warmup_start\n");
     new Handle:warmup = FindConVar("mp_warmup_pausetimer");
     SetConVarInt(warmup, 1);
     SetTeamNames(g_capt1, g_capt2);
-    StartReadyUp(true);
 }
 
 ClearSaves()
@@ -1002,7 +1002,7 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
     new Float:winningvotes = float(item_info[0][VOTEINFO_ITEM_VOTES]);
     new Float:required = float(num_votes) * 0.5;
     
-    if (winningvotes < required && num_items > 1)
+    if (winningvotes < required)
     {
         /* runoff map vote */
         new Handle:newmenu = CreateMenu(Menu_MapVote);
@@ -1725,7 +1725,15 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                 }
             }
 
-            if (assignedTeam == GP_TEAM_NONE)
+            if (assignedTeam != GP_TEAM_NONE) // already assigned to a team
+            {
+                if (!TryJoinTeam(client, assignedTeam))
+                {
+                    PrintToChat(client, "[GP] You are assigned to a team but it is currently full.");
+                    PrintToChat(client, "[GP] A substitute player must leave the game or join the spectators before you can rejoin.");
+                }
+            }
+            else
             {
                 if (team == CS_TEAM_CT)
                 {
@@ -1784,14 +1792,6 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     }
                 }
             }
-            else // already assigned to a team
-            {
-                if (!TryJoinTeam(client, assignedTeam))
-                {
-                    PrintToChat(client, "[GP] You are assigned to a team but it is currently full.");
-                    PrintToChat(client, "[GP] A substitute player must leave the game or join the spectators before you can rejoin.");
-                }
-            }
 
             return Plugin_Handled;
         }
@@ -1816,7 +1816,7 @@ CountActivePlayers(GpTeam:team)
         decl String:auth[STEAMID_LEN];
         GetArrayString(hTeam, i, auth, sizeof(auth));
         new client = FindClientByAuthString(auth);
-        if (client > 0)
+        if (client > 0 && !(GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
             count++;
     }
 
