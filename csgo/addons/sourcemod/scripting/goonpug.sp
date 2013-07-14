@@ -1657,8 +1657,7 @@ public Action:Timer_PickTeams(Handle:timer)
             ClearArray(hSortedClients);
             for (new i = 1; i <= MaxClients; i++)
             {
-                if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR
-                    && g_playerReady[i])
+                if (IsValidPlayer(i) && g_playerReady[i] && i != g_captClients[0] && i != g_captClients[1])
                 {
                     PushArrayCell(hSortedClients, i);
                 }
@@ -1666,7 +1665,8 @@ public Action:Timer_PickTeams(Handle:timer)
             SortADTArrayCustom(hSortedClients, RwsSortDescending);
             pickCount = 1;
         }
-        else if (pickCount == 2)
+
+        if (pickCount == 2)
         {
             g_whosePick ^= 1;
             pickCount = 0;
@@ -2280,7 +2280,7 @@ public Action:Command_RestartMatch(client, args)
         {
             PrintToChatAll("[GP] Restarting current match.");
             LogToGame("GoonPUG triggered \"Restart_Match\"");
-            if (g_period % 2)
+            if (g_period % 2 == 0)
             {
                 SwapSides();
             }
