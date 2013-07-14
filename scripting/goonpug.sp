@@ -158,6 +158,8 @@ public OnPluginStart()
                 "Abort the current match.");
     RegAdminCmd("sm_restartmatch", Command_RestartMatch, ADMFLAG_CHANGEMAP,
                 "Restart the current match");
+    RegAdminCmd("sm_endmatch", Command_EndMatch, ADMFLAG_CHANGEMAP,
+                "End the current match.");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -1937,12 +1939,27 @@ StartServerDemo()
 StopServerDemo(bool:save=true)
 {
     ServerCommand("tv_stoprecord\n");
+    new Handle:hPack = CreateDataPack();
+    WritePackCell(hPack, save);
+    WritePackString(hPack, g_demoname);
+    // Need to wait here for tv_stoprecord to finish
+    CreateTimer(5.0, Timer_CompressDemo, hPack);
+    g_recording = false;
+}
+
+public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
+{
+    ResetPack(pack);
+    new bool:save = ReadPackCell(pack);
+    decl String:demoname[PLATFORM_MAX_PATH];
+    ReadPackString(pack, demoname, sizeof(demoname));
+
     decl String:demo[PLATFORM_MAX_PATH];
-    Format(demo, sizeof(demo), "%s.dem", g_demoname);
+    Format(demo, sizeof(demo), "%s.dem", demoname);
     if (save)
     {
         decl String:zip[PLATFORM_MAX_PATH];
-        Format(zip, sizeof(zip), "%s.zip", g_demoname);
+        Format(zip, sizeof(zip), "%s.zip", demoname);
         new Handle:hZip = Zip_Open(zip, ZIP_APPEND_STATUS_CREATE);
         if (INVALID_HANDLE != hZip)
         {
@@ -1956,7 +1973,7 @@ StopServerDemo(bool:save=true)
             {
                 CloseHandle(hZip);
                 LogToGame("Wrote compressed demo %s", zip);
-                // TODO: Upload this zip file somewhere then delete it
+                UploadDemo(zip);
             }
         }
         else
@@ -1965,7 +1982,74 @@ StopServerDemo(bool:save=true)
         }
     }
     DeleteFile(demo);
-    g_recording = false;
+}
+
+UploadDemo(const String:filename[])
+{
+    new Handle:netPublicAdr = FindConVar("net_public_adr");
+    decl String:ip[16];
+    GetConVarString(netPublicAdr, ip, sizeof(ip));
+
+    new Handle:hCurl = curl_easy_init();
+    if (hCurl == INVALID_HANDLE)
+        return;
+
+    new CURL_Default_opt[][2] = {
+        {_:CURLOPT_NOSIGNAL, 1},
+        {_:CURLOPT_NOPROGRESS, 1},
+        {_:CURLOPT_TIMEOUT, 90},
+        {_:CURLOPT_CONNECTTIMEOUT, 60},
+        {_:CURLOPT_VERBOSE, 0}
+    };
+    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
+    new Handle:hPack = CreateDataPack();
+    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
+
+    // TODO: Use web server to manage different api keys for each server we
+    // know about
+    new Handle:hForm = curl_httppost();
+    decl String:key[PLATFORM_MAX_PATH];
+    Format(key, sizeof(key), "/%s/%s", ip, filename);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYNAME, "public-read", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYNAME,
+                 "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYNAME,
+                 "eyJleHBpcmF0aW9uIjogIjIwMTQtMDEtMDFUMDA6MDA6MDBaIiwNCiAgImNvbmRpdGlvbnMiOiBbIA0KICAgIHsiYnVja2V0IjogImdvb25wdWctZGVtb3MifSwgDQogICAgWyJzdGFydHMtd2l0aCIsICIka2V5IiwgIi8iXSwNCiAgICB7ImFjbCI6ICJwdWJsaWMtcmVhZCJ9LA0KICBdDQp9", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYNAME, "8RrNPLHjNXuCe6k2GGWwAAul3p0=", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
+    curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
+    curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
+    PrintToServer("[GP] Uploading %s to S3...", filename);
+    WritePackCell(hPack, hForm);
+    curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
+}
+
+public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
+{
+    CloseHandle(hCurl);
+    new endpos = GetPackPosition(hPack);
+    ResetPack(hPack);
+    new Handle:hForm = ReadPackCell(hPack);
+    CloseHandle(hForm);
+
+    if (CURLE_OK != code) {
+        LogError("Curl could not upload demo (%i)", code);
+        CloseHandle(hPack);
+        return;
+    }
+
+    decl String:receiveStr[CURL_BUFSIZE];
+    strcopy(receiveStr, sizeof(receiveStr), "");
+    while (GetPackPosition(hPack) < endpos)
+    {
+        decl String:buf[CURL_BUFSIZE];
+        ReadPackString(hPack, buf, sizeof(buf));
+        StrCat(receiveStr, sizeof(receiveStr), buf);
+    }
+
+    PrintToServer(receiveStr);
+    CloseHandle(hPack);
 }
 
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
@@ -2015,18 +2099,28 @@ PostMatch(bool:abort=false)
     }
 
     // Set the nextmap to a warmup map
-    new rand = GetURandomInt() % GetArraySize(hWarmupMapKeys);
-    decl String:fileid[32];
-    GetArrayString(hWarmupMapKeys, rand, fileid, sizeof(fileid));
-    decl String:mapname[MAX_MAPNAME_LEN];
-    GetTrieString(hWarmupMaps, fileid, mapname, sizeof(mapname));
-    decl String:map[MAX_MAPNAME_LEN];
-    Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
-    GPSetNextMap(map);
-    new Handle:hDelay = FindConVar("tv_delay");
-    new Float:delay = float(GetConVarInt(hDelay));
-    PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
-    CreateTimer(delay, Timer_ChangeMap);
+    if (GetArraySize(hWarmupMapKeys) > 0)
+    {
+        new rand = GetURandomInt() % GetArraySize(hWarmupMapKeys);
+        decl String:fileid[32];
+        GetArrayString(hWarmupMapKeys, rand, fileid, sizeof(fileid));
+        decl String:mapname[MAX_MAPNAME_LEN];
+        GetTrieString(hWarmupMaps, fileid, mapname, sizeof(mapname));
+        decl String:map[MAX_MAPNAME_LEN];
+        Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+        GPSetNextMap(map);
+        new Handle:hDelay = FindConVar("tv_delay");
+        new Float:delay = float(GetConVarInt(hDelay));
+        PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
+        CreateTimer(delay, Timer_ChangeMap);
+    }
+    else
+    {
+        PrintToChatAll("[GP] Skipping warmup map change.");
+        g_matchState = MS_WARMUP;
+        ServerCommand("exec goonpug_warmup.cfg\n");
+        StartReadyUp(true);
+    }
 }
 
 StartOvertimeVote()
@@ -2172,6 +2266,24 @@ public Action:Command_RestartMatch(client, args)
                 SwapSides();
             }
             StartLiveMatch();
+        }
+        default:
+        {
+            PrintToChatAll("[GP] You can't do that right now.");
+        }
+    }
+
+    return Plugin_Handled;
+}
+
+public Action:Command_EndMatch(client, args)
+{
+    switch (g_matchState)
+    {
+        case MS_LIVE, MS_HALFTIME, MS_OT:
+        {
+            PrintToChatAll("[GP] Ending current match.");
+            PostMatch();
         }
         default:
         {
