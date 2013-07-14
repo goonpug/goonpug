@@ -60,13 +60,14 @@ enum MatchState
     MS_PRE_LIVE,
     MS_LIVE,
     MS_OT,
+    MS_HALFTIME,
     MS_POST_MATCH,
 };
 new MatchState:g_matchState = MS_WARMUP;
 
 // This value could possibly change for certain game types (2v2/3v3 ladders
 // etc)
-new g_maxPlayers = 4;
+new g_maxPlayers = 10;
 
 // Global handles
 
@@ -162,7 +163,7 @@ public OnPluginStart()
     //HookEvent("round_start", Event_RoundStart);
     //HookEvent("round_end", Event_RoundEnd);
     HookEvent("announce_phase_end", Event_AnnouncePhaseEnd);
-    //HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
+    HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     //HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
 
@@ -234,13 +235,13 @@ public OnClientAuthorized(client, const String:auth[])
     decl kills;
     if (GetTrieValue(hSaveKills, auth, kills))
     {
-        SetEntProp(client, Prop_Send, "m_iFrags", kills);
+        SetEntProp(client, Prop_Send, "m_iKills", kills);
     }
 
     decl assists;
     if (GetTrieValue(hSaveAssists, auth, assists))
     {
-        new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
+        new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
         SetEntData(client, assists_offset, assists);
     }
 
@@ -298,19 +299,24 @@ public FetchRwsCb(Handle:hCurl, CURLcode:code, any:hPack)
             StrCat(receiveStr, sizeof(receiveStr), buf);
         }
         new Handle:hJson = json_load(receiveStr);
-        new numResults = json_object_get_int(hJson, "num_results");
-        if (numResults > 0)
+        if (hJson == INVALID_HANDLE)
+            LogError("Got invalid RWS json object");
+        else
         {
-            new Handle:hObjects = json_object_get(hJson, "objects");
-            new Handle:hPlayer = json_array_get(hObjects, 0);
+            new numResults = json_object_get_int(hJson, "num_results");
+            if (numResults > 0)
+            {
+                new Handle:hObjects = json_object_get(hJson, "objects");
+                new Handle:hPlayer = json_array_get(hObjects, 0);
 
-            decl String:auth[STEAMID_LEN];
-            json_object_get_string(hPlayer, "auth_id", auth, sizeof(auth));
-            new Float:rws = json_object_get_float(hPlayer, "average_rws");
-            SetTrieValue(hPlayerRws, auth, rws);
-            PrintToServer("Got RWS for player %s: %f", auth, rws);
+                decl String:auth[STEAMID_LEN];
+                json_object_get_string(hPlayer, "auth_id", auth, sizeof(auth));
+                new Float:rws = json_object_get_float(hPlayer, "average_rws");
+                SetTrieValue(hPlayerRws, auth, rws);
+                PrintToServer("Got RWS for player %s: %f", auth, rws);
+            }
+            CloseHandle(hJson);
         }
-        CloseHandle(hJson);
     }
     CloseHandle(hPack);
 }
@@ -778,6 +784,36 @@ public Action:Command_Ready(client, args)
     }
     else if (CountReady() < g_maxPlayers)
     {
+        switch (g_matchState)
+        {
+            case MS_PRE_LIVE, MS_HALFTIME:
+            {
+                decl String:steamId[STEAMID_LEN];
+                GetClientAuthString(client, steamId, sizeof(steamId));
+
+                new GpTeam:assignedTeam = GP_TEAM_NONE;
+                new index = FindStringInArray(hTeam1, steamId);
+                if (index >= 0)
+                {
+                    assignedTeam = GP_TEAM_1;
+                }
+                else
+                {
+                    index = FindStringInArray(hTeam2, steamId);
+                    if (index >= 0)
+                    {
+                        assignedTeam = GP_TEAM_2;
+                    }
+                }
+
+                if (assignedTeam == GP_TEAM_NONE)
+                {
+                    PrintToChat(client, "[GP] You are not assigned to a team and cannot ready up right now.");
+                    return Plugin_Handled;
+                }
+            }
+        }
+
         decl String:name[64];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
@@ -863,10 +899,10 @@ public Action:Event_PlayerDisconnect(
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
     SetTrieValue(hSaveCash, steamId, cash);
 
-    new kills = GetEntProp(client, Prop_Send, "m_iFrags");
+    new kills = GetEntProp(client, Prop_Send, "m_iKills");
     SetTrieValue(hSaveKills, steamId, kills);
 
-    new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
+    new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
     new assists = GetEntData(client, assists_offset);
     SetTrieValue(hSaveAssists, steamId, assists);
 
@@ -900,6 +936,15 @@ OnAllReady()
         case MS_PRE_LIVE:
         {
             StartLiveMatch();
+        }
+        case MS_HALFTIME:
+        {
+            new Handle:pause = FindConVar("mp_halftime_pausetimer");
+            SetConVarInt(pause, 0);
+            new Handle:time = FindConVar("mp_halftime_duration");
+            new timeval = GetConVarInt(time);
+            PrintToChatAll("[GP] All players ready, resuming match in %d seconds.", timeval);
+            g_matchState = MS_LIVE;
         }
 #if defined DEBUG
         default:
@@ -975,11 +1020,10 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_End:
         {
             CloseHandle(menu);
-            ChooseCaptains();
         }
         case MenuAction_VoteCancel:
         {
-            if (VoteCancel_NoVotes == param1)
+            if (param2 == VoteCancel_NoVotes)
             {
                 new i = GetURandomInt() % GetMenuItemCount(menu);
                 decl String:mapname[MAX_MAPNAME_LEN];
@@ -992,6 +1036,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                 decl String:map[MAX_MAPNAME_LEN];
                 Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
                 GPSetNextMap(map);
+                ChooseCaptains();
             }
         }
     }
@@ -1029,8 +1074,6 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
             }
         }
 
-        if (IsVoteInProgress())
-            CancelVote();
         VoteMenu(newmenu, clients, clientCount, 30);
     }
     else
@@ -1042,6 +1085,7 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
         decl String:map[MAX_MAPNAME_LEN];
         Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
         GPSetNextMap(map);
+        ChooseCaptains();
     }
 }
 
@@ -1705,7 +1749,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 
     switch (g_matchState)
     {
-        case MS_PICK_TEAMS, MS_PRE_LIVE, MS_LIVE, MS_OT:
+        case MS_PICK_TEAMS, MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
         {
             new period = g_period;
             if (period == 0)
@@ -1816,8 +1860,10 @@ CountActivePlayers(GpTeam:team)
         decl String:auth[STEAMID_LEN];
         GetArrayString(hTeam, i, auth, sizeof(auth));
         new client = FindClientByAuthString(auth);
-        if (client > 0 && !(GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
+        if (client > 0 && (GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
+        {
             count++;
+        }
     }
 
     return count;
@@ -1846,13 +1892,12 @@ StartLiveMatch()
 {
     StartServerDemo();
     g_matchState = MS_LIVE;
+    g_period = 1;
     ServerCommand("mp_warmup_end\n");
-    ServerCommand("exec goonpug_match.cfg\n");
-    new Handle:pb = StartMessageAll("KeyHintText");
-    PbAddString(pb, "hints", "Live after restart...");
-    EndMessage();
+    ServerCommand("exec goonpug_pug.cfg\n");
+    PrintToChatAll("[GP] Live after restart!!!");
     ServerCommand("mp_restartgame 10\n");
-    CreateTimer(10.0, Timer_Lo3);
+    CreateTimer(11.0, Timer_Lo3);
 }
 
 public Action:Timer_Lo3(Handle:timer)
@@ -1918,13 +1963,29 @@ StopServerDemo(bool:save=true)
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
     ClearSaves();
+    if (g_period == 1)
+    {
+        PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
+        g_matchState = MS_HALFTIME;
+        StartReadyUp(true);
+    }
+    else if ((g_period % 2) == 0)
+    {
+        StartOvertimeVote();
+    }
+    else
+    {
+        new Handle:pause = FindConVar("mp_halftime_pausetimer");
+        SetConVarInt(pause, 0);
+    }
+    g_period++;
 
     return Plugin_Continue;
 }
 
 public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    if (g_matchState == MS_LIVE)
+    if (g_matchState == MS_LIVE || g_matchState == MS_OT)
     {
         PostMatch();
     }
@@ -1950,4 +2011,73 @@ PostMatch()
     new Float:delay = float(GetConVarInt(hDelay));
     PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
     CreateTimer(delay, Timer_ChangeMap);
+}
+
+StartOvertimeVote()
+{
+    new Handle:menu = CreateMenu(Menu_OvertimeVote);
+    SetMenuTitle(menu, "Continue match?");
+    AddMenuItem(menu, "Yes", "Yes (Play OT)");
+    AddMenuItem(menu, "No", "No (End match in tie)");
+    SetMenuExitButton(menu, false);
+
+    new clientCount = 0;
+    new clients[MAXPLAYERS + 1];
+
+    for (new i = 0; i < GetArraySize(hTeam1); i++)
+    {
+        decl String:auth[STEAMID_LEN];
+        GetArrayString(hTeam1, i, auth, sizeof(auth));
+        new client = FindClientByAuthString(auth);
+        if (client > 0 && (GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
+        {
+            clients[clientCount] = client;
+            clientCount++;
+        }
+    }
+
+    for (new i = 0; i < GetArraySize(hTeam2); i++)
+    {
+        decl String:auth[STEAMID_LEN];
+        GetArrayString(hTeam2, i, auth, sizeof(auth));
+        new client = FindClientByAuthString(auth);
+        if (client > 0 && (GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
+        {
+            clients[clientCount] = client;
+            clientCount++;
+        }
+    }
+
+    VoteMenu(menu, clients, clientCount, 30);
+}
+
+public Menu_OvertimeVote(Handle:menu, MenuAction:action, param1, param2)
+{
+    switch (action)
+    {
+        case MenuAction_End:
+        {
+            CloseHandle(menu);
+        }
+        case MenuAction_VoteEnd:
+        {
+            // 0 = Yes, 1 = No
+            if (param1 == 0)
+            {
+                PrintToChatAll("[GP] Vote to play OT wins.");
+                g_matchState = MS_OT;
+                new Handle:pause = FindConVar("mp_halftime_pausetimer");
+                SetConVarInt(pause, 0);
+                new Handle:time = FindConVar("mp_halftime_duration");
+                new timeval = GetConVarInt(time);
+                PrintToChatAll("[GP] Starting OT in in %d seconds.", timeval);
+            }
+            else
+            {
+                PrintToChatAll("[GP] Vote to play OT fails. Match ended.");
+                new Handle:event = CreateEvent("cs_win_panel_match");
+                FireEvent(event);
+            }
+        }
+    }
 }
