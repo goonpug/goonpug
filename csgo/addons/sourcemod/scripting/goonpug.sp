@@ -44,7 +44,7 @@
 #include <smjansson>
 #include <zip>
 
-#define GOONPUG_VERSION "1.0.0"
+#define GOONPUG_VERSION "1.0.0-RC1"
 #define MAX_ROUNDS 128
 #define MAX_CMD_LEN 32
 #define STEAMID_LEN 32
