@@ -2011,24 +2011,24 @@ UploadDemo(const String:filename[])
     decl String:key[PLATFORM_MAX_PATH];
     Format(key, sizeof(key), "/%s/%s", ip, filename);
     curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYNAME, "public-read", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYNAME,
+    curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
                  "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYNAME,
+    curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
                  "eyJleHBpcmF0aW9uIjogIjIwMTQtMDEtMDFUMDA6MDA6MDBaIiwNCiAgImNvbmRpdGlvbnMiOiBbIA0KICAgIHsiYnVja2V0IjogImdvb25wdWctZGVtb3MifSwgDQogICAgWyJzdGFydHMtd2l0aCIsICIka2V5IiwgIi8iXSwNCiAgICB7ImFjbCI6ICJwdWJsaWMtcmVhZCJ9LA0KICBdDQp9", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYNAME, "8RrNPLHjNXuCe6k2GGWwAAul3p0=", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "8RrNPLHjNXuCe6k2GGWwAAul3p0=", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
     PrintToServer("[GP] Uploading %s to S3...", filename);
     WritePackCell(hPack, hForm);
+    WritePackString(hPack, filename);
     curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
 }
 
 public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
 {
     CloseHandle(hCurl);
-    new endpos = GetPackPosition(hPack);
     ResetPack(hPack);
     new Handle:hForm = ReadPackCell(hPack);
     CloseHandle(hForm);
@@ -2039,16 +2039,10 @@ public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
         return;
     }
 
-    decl String:receiveStr[CURL_BUFSIZE];
-    strcopy(receiveStr, sizeof(receiveStr), "");
-    while (GetPackPosition(hPack) < endpos)
-    {
-        decl String:buf[CURL_BUFSIZE];
-        ReadPackString(hPack, buf, sizeof(buf));
-        StrCat(receiveStr, sizeof(receiveStr), buf);
-    }
+    decl String:filename[PLATFORM_MAX_PATH];
+    ReadPackString(hPack, filename, sizeof(filename));
+    DeleteFile(filename);
 
-    PrintToServer(receiveStr);
     CloseHandle(hPack);
 }
 
