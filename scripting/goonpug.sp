@@ -150,8 +150,14 @@ public OnPluginStart()
     hDotCmds = CreateArray(MAX_CMD_LEN);
     RegDotCmd("ready", Command_Ready, "Set yourself as ready.");
     RegDotCmd("unready", Command_Unready, "Set yourself as not ready.");
-    // ESEA compatibility
     RegDotCmd("notready", Command_Unready, "Set yourself as not ready.");
+
+    RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP,
+                "Start a live match with the current teams.");
+    RegAdminCmd("sm_abortmatch", Command_AbortMatch, ADMFLAG_CHANGEMAP,
+                "Abort the current match.");
+    RegAdminCmd("sm_restartmatch", Command_RestartMatch, ADMFLAG_CHANGEMAP,
+                "Restart the current match");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -681,6 +687,11 @@ bool:NeedReadyUp()
  */
 public Action:Timer_ReadyUp(Handle:timer)
 {
+    if (!NeedReadyUp())
+    {
+        return Plugin_Stop;
+    }
+
     new readyCount = CountReady();
     if (readyCount == g_maxPlayers)
     {
@@ -1469,7 +1480,7 @@ PickTeams()
     g_matchState = MS_PICK_TEAMS;
     g_period = 0;
     SetTeamNames(g_capt1, g_capt2);
-    LockAndClearTeams();
+    ClearTeams();
     ForceAllSpec();
     ForcePlayerTeam(g_captClients[0], GP_TEAM_1);
     ForcePlayerTeam(g_captClients[1], GP_TEAM_2);
@@ -1489,13 +1500,9 @@ SetTeamNames(const String:team1[], const String:team2[])
     SetConVarString(teamname, team2);
 }
 
-LockAndClearTeams()
-{
-    ClearTeams();
-}
-
 ClearTeams()
 {
+    SetTeamNames("", "");
     ClearArray(hTeam1);
     ClearArray(hTeam2);
 }
@@ -1514,7 +1521,7 @@ ForceAllSpec()
 /**
  * Force a player to join the specified team
  */
-ForcePlayerTeam(client, GpTeam:team)
+ForcePlayerTeam(client, GpTeam:team, bool:changeTeam=true)
 {
     if (IsValidPlayer(client))
     {
@@ -1550,7 +1557,8 @@ ForcePlayerTeam(client, GpTeam:team)
                 RemoveFromArray(hTeam2, index);
         }
 
-        GPChangeClientTeam(client, team);
+        if (changeTeam)
+            GPChangeClientTeam(client, team);
     }
 }
 
@@ -1893,7 +1901,6 @@ StartLiveMatch()
     StartServerDemo();
     g_matchState = MS_LIVE;
     g_period = 1;
-    ServerCommand("mp_warmup_end\n");
     ServerCommand("exec goonpug_pug.cfg\n");
     PrintToChatAll("[GP] Live after restart!!!");
     ServerCommand("mp_restartgame 10\n");
@@ -1902,6 +1909,7 @@ StartLiveMatch()
 
 public Action:Timer_Lo3(Handle:timer)
 {
+    ServerCommand("mp_warmup_end\n");
     new Handle:pb = StartMessageAll("KeyHintText");
     PbAddString(pb, "hints", "LIVE! LIVE! LIVE!");
     EndMessage();
@@ -1992,14 +2000,22 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
     return Plugin_Continue;
 }
 
-PostMatch()
+PostMatch(bool:abort=false)
 {
-    StopServerDemo();
     g_matchState = MS_POST_MATCH;
-    LogToGame("GoonPUG triggered \"End_Match\"");
+    if (abort)
+    {
+        StopServerDemo(false);
+        LogToGame("GoonPUG triggered \"Abort_Match\"");
+    }
+    else
+    {
+        StopServerDemo();
+        LogToGame("GoonPUG triggered \"End_Match\"");
+    }
 
     // Set the nextmap to a warmup map
-    new rand = GetURandomInt() % GetArraySize(hWarmupMaps);
+    new rand = GetURandomInt() % GetArraySize(hWarmupMapKeys);
     decl String:fileid[32];
     GetArrayString(hWarmupMapKeys, rand, fileid, sizeof(fileid));
     decl String:mapname[MAX_MAPNAME_LEN];
@@ -2020,6 +2036,7 @@ StartOvertimeVote()
     AddMenuItem(menu, "Yes", "Yes (Play OT)");
     AddMenuItem(menu, "No", "No (End match in tie)");
     SetMenuExitButton(menu, false);
+    SetVoteResultCallback(menu, VoteHandler_OvertimeVote);
 
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
@@ -2059,24 +2076,128 @@ public Menu_OvertimeVote(Handle:menu, MenuAction:action, param1, param2)
         {
             CloseHandle(menu);
         }
-        case MenuAction_VoteEnd:
+    }
+}
+
+public VoteHandler_OvertimeVote(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
+{
+    new Float:winningvotes = float(item_info[0][VOTEINFO_ITEM_VOTES]);
+    new Float:required = float(num_votes) * 0.5;
+    decl String:result[8];
+    GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], result, sizeof(result));
+    
+    if (StrEqual(result, "Yes") && winningvotes > required)
+    {
+        PrintToChatAll("[GP] Vote to play OT wins (%0.f%%).", (winningvotes / float(num_votes) * 100.0));
+        g_matchState = MS_OT;
+        new Handle:pause = FindConVar("mp_halftime_pausetimer");
+        SetConVarInt(pause, 0);
+        new Handle:time = FindConVar("mp_halftime_duration");
+        new timeval = GetConVarInt(time);
+        PrintToChatAll("[GP] Starting OT in in %d seconds.", timeval);
+    }
+    else
+    {
+        PrintToChatAll("[GP] Vote to play OT fails.");
+        PrintToChatAll("[GP] Match ended.");
+        PostMatch();
+    }
+}
+
+public Action:Command_Lo3(client, args)
+{
+    LockCurrentTeams();
+    StartLiveMatch();
+
+    return Plugin_Handled;
+}
+
+LockCurrentTeams()
+{
+    ClearTeams();
+
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
         {
-            // 0 = Yes, 1 = No
-            if (param1 == 0)
+            decl String:auth[STEAMID_LEN];
+            GetClientAuthString(i, auth, sizeof(auth));
+            switch (GetClientTeam(i))
             {
-                PrintToChatAll("[GP] Vote to play OT wins.");
-                g_matchState = MS_OT;
-                new Handle:pause = FindConVar("mp_halftime_pausetimer");
-                SetConVarInt(pause, 0);
-                new Handle:time = FindConVar("mp_halftime_duration");
-                new timeval = GetConVarInt(time);
-                PrintToChatAll("[GP] Starting OT in in %d seconds.", timeval);
+                case CS_TEAM_CT:
+                {
+                    ForcePlayerTeam(i, GP_TEAM_1, false);
+                }
+                case CS_TEAM_T:
+                {
+                    ForcePlayerTeam(i, GP_TEAM_2, false);
+                }
+                default:
+                {
+                    ForcePlayerTeam(i, GP_TEAM_NONE, false);
+                }
             }
-            else
+        }
+    }
+}
+
+public Action:Command_AbortMatch(client, args)
+{
+    switch (g_matchState)
+    {
+        case MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
+        {
+            PrintToChatAll("[GP] Aborting current match.");
+            PostMatch(true);
+        }
+        default:
+        {
+            PrintToChatAll("[GP] You can't do that right now.");
+        }
+    }
+
+    return Plugin_Handled;
+}
+
+public Action:Command_RestartMatch(client, args)
+{
+    switch (g_matchState)
+    {
+        case MS_LIVE, MS_HALFTIME, MS_OT:
+        {
+            PrintToChatAll("[GP] Restarting current match.");
+            LogToGame("GoonPUG triggered \"Restart_Match\"");
+            if (g_period % 2)
             {
-                PrintToChatAll("[GP] Vote to play OT fails. Match ended.");
-                new Handle:event = CreateEvent("cs_win_panel_match");
-                FireEvent(event);
+                SwapSides();
+            }
+            StartLiveMatch();
+        }
+        default:
+        {
+            PrintToChatAll("[GP] You can't do that right now.");
+        }
+    }
+
+    return Plugin_Handled;
+}
+
+SwapSides()
+{
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
+        {
+            switch (GetClientTeam(i))
+            {
+                case CS_TEAM_CT:
+                {
+                    ChangeClientTeam(i, CS_TEAM_T);
+                }
+                case CS_TEAM_T:
+                {
+                    ChangeClientTeam(i, CS_TEAM_CT);
+                }
             }
         }
     }
