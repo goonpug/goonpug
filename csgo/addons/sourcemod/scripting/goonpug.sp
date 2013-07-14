@@ -234,38 +234,6 @@ public OnClientAuthorized(client, const String:auth[])
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
     FetchPlayerRws(auth);
-
-    decl cash;
-    if (GetTrieValue(hSaveCash, auth, cash))
-    {
-        SetEntProp(client, Prop_Send, "m_iAccount", cash);
-    }
-
-    decl kills;
-    if (GetTrieValue(hSaveKills, auth, kills))
-    {
-        SetEntProp(client, Prop_Data, "m_iFrags", kills);
-    }
-
-    decl assists;
-    if (GetTrieValue(hSaveAssists, auth, assists))
-    {
-        new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
-        SetEntData(client, assists_offset, assists);
-    }
-
-    decl deaths;
-    if (GetTrieValue(hSaveDeaths, auth, deaths))
-    {
-        SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
-    }
-
-    decl score;
-    if (GetTrieValue(hSaveScore, auth, score))
-    {
-        new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
-        SetEntData(client, score_offset, score);
-    }
 }
 
 FetchPlayerRws(const String:auth[])
@@ -809,18 +777,18 @@ public Action:Command_Ready(client, args)
         {
             case MS_PRE_LIVE, MS_HALFTIME:
             {
-                decl String:steamId[STEAMID_LEN];
-                GetClientAuthString(client, steamId, sizeof(steamId));
+                decl String:auth[STEAMID_LEN];
+                GetClientAuthString(client, auth, sizeof(auth));
 
                 new GpTeam:assignedTeam = GP_TEAM_NONE;
-                new index = FindStringInArray(hTeam1, steamId);
+                new index = FindStringInArray(hTeam1, auth);
                 if (index >= 0)
                 {
                     assignedTeam = GP_TEAM_1;
                 }
                 else
                 {
-                    index = FindStringInArray(hTeam2, steamId);
+                    index = FindStringInArray(hTeam2, auth);
                     if (index >= 0)
                     {
                         assignedTeam = GP_TEAM_2;
@@ -890,8 +858,8 @@ public Action:Event_PlayerDisconnect(
         return Plugin_Continue;
     }
 
-    decl String:steamId[STEAMID_LEN];
-    GetClientAuthString(client, steamId, sizeof(steamId));
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
     decl String:playerName[64];
     GetClientName(client, playerName, sizeof(playerName));
     decl String:reason[64];
@@ -918,21 +886,21 @@ public Action:Event_PlayerDisconnect(
     }
 
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
-    SetTrieValue(hSaveCash, steamId, cash);
+    SetTrieValue(hSaveCash, auth, cash);
 
     new kills = GetEntProp(client, Prop_Data, "m_iFrags");
-    SetTrieValue(hSaveKills, steamId, kills);
+    SetTrieValue(hSaveKills, auth, kills);
 
     new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
     new assists = GetEntData(client, assists_offset);
-    SetTrieValue(hSaveAssists, steamId, assists);
+    SetTrieValue(hSaveAssists, auth, assists);
 
     new deaths = GetEntProp(client, Prop_Data, "m_iDeaths");
-    SetTrieValue(hSaveDeaths, steamId, deaths);
+    SetTrieValue(hSaveDeaths, auth, deaths);
 
     new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
     new score = GetEntData(client, score_offset);
-    SetTrieValue(hSaveScore, steamId, score);
+    SetTrieValue(hSaveScore, auth, score);
 
     g_playerReady[client] = false;
 
@@ -1554,34 +1522,34 @@ ForcePlayerTeam(client, GpTeam:team, bool:changeTeam=true)
 {
     if (IsValidPlayer(client))
     {
-        decl String:steamId[STEAMID_LEN];
-        GetClientAuthString(client, steamId, sizeof(steamId));
+        decl String:auth[STEAMID_LEN];
+        GetClientAuthString(client, auth, sizeof(auth));
 
         decl index;
         if (team == GP_TEAM_1)
         {
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam2, index);
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index < 0)
-                PushArrayString(hTeam1, steamId);
+                PushArrayString(hTeam1, auth);
         }
         else if (team == GP_TEAM_2)
         {
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index < 0)
-                PushArrayString(hTeam2, steamId);
+                PushArrayString(hTeam2, auth);
         }
         else
         {
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam2, index);
         }
@@ -1770,6 +1738,46 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     if (!IsValidPlayer(client) || IsFakeClient(client))
         return Plugin_Continue;
 
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    decl cash;
+    if (GetTrieValue(hSaveCash, auth, cash))
+    {
+        SetEntProp(client, Prop_Send, "m_iAccount", cash);
+        RemoveFromTrie(hSaveCash, auth);
+    }
+
+    decl kills;
+    if (GetTrieValue(hSaveKills, auth, kills))
+    {
+        SetEntProp(client, Prop_Data, "m_iFrags", kills);
+        RemoveFromTrie(hSaveKills, auth);
+    }
+
+    decl assists;
+    if (GetTrieValue(hSaveAssists, auth, assists))
+    {
+        new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
+        SetEntData(client, assists_offset, assists);
+        RemoveFromTrie(hSaveAssists, auth);
+    }
+
+    decl deaths;
+    if (GetTrieValue(hSaveDeaths, auth, deaths))
+    {
+        SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
+        RemoveFromTrie(hSaveDeaths, auth);
+    }
+
+    decl score;
+    if (GetTrieValue(hSaveScore, auth, score))
+    {
+        new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
+        SetEntData(client, score_offset, score);
+        RemoveFromTrie(hSaveScore, auth);
+    }
+
     decl String:param[16];
     GetCmdArg(1, param, sizeof(param));
     StripQuotes(param);
@@ -1781,22 +1789,19 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         return Plugin_Continue;
     }
 
-    decl String:steamId[STEAMID_LEN];
-    GetClientAuthString(client, steamId, sizeof(steamId));
-
     switch (g_matchState)
     {
         case MS_PICK_TEAMS:
         {
             new GpTeam:assignedTeam = GP_TEAM_NONE;
-            new index = FindStringInArray(hTeam1, steamId);
+            new index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
             {
                 assignedTeam = GP_TEAM_1;
             }
             else
             {
-                index = FindStringInArray(hTeam2, steamId);
+                index = FindStringInArray(hTeam2, auth);
                 if (index >= 0)
                 {
                     assignedTeam = GP_TEAM_2;
@@ -1813,14 +1818,14 @@ public Action:Command_Jointeam(client, const String:command[], argc)
             if (period == 0)
                 period = 1;
             new GpTeam:assignedTeam = GP_TEAM_NONE;
-            new index = FindStringInArray(hTeam1, steamId);
+            new index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
             {
                 assignedTeam = GP_TEAM_1;
             }
             else
             {
-                index = FindStringInArray(hTeam2, steamId);
+                index = FindStringInArray(hTeam2, auth);
                 if (index >= 0)
                 {
                     assignedTeam = GP_TEAM_2;
