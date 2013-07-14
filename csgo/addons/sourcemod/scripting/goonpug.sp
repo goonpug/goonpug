@@ -244,20 +244,27 @@ public OnClientAuthorized(client, const String:auth[])
     decl kills;
     if (GetTrieValue(hSaveKills, auth, kills))
     {
-        SetEntProp(client, Prop_Send, "m_iKills", kills);
+        SetEntProp(client, Prop_Data, "m_iFrags", kills);
     }
 
     decl assists;
     if (GetTrieValue(hSaveAssists, auth, assists))
     {
-        new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
+        new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
         SetEntData(client, assists_offset, assists);
     }
 
     decl deaths;
     if (GetTrieValue(hSaveDeaths, auth, deaths))
     {
-        SetEntProp(client, Prop_Send, "m_iDeaths", deaths);
+        SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
+    }
+
+    decl score;
+    if (GetTrieValue(hSaveScore, auth, score))
+    {
+        new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
+        SetEntData(client, score_offset, score);
     }
 }
 
@@ -913,15 +920,19 @@ public Action:Event_PlayerDisconnect(
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
     SetTrieValue(hSaveCash, steamId, cash);
 
-    new kills = GetEntProp(client, Prop_Send, "m_iKills");
+    new kills = GetEntProp(client, Prop_Data, "m_iFrags");
     SetTrieValue(hSaveKills, steamId, kills);
 
-    new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
+    new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
     new assists = GetEntData(client, assists_offset);
     SetTrieValue(hSaveAssists, steamId, assists);
 
-    new deaths = GetEntProp(client, Prop_Send, "m_iDeaths");
+    new deaths = GetEntProp(client, Prop_Data, "m_iDeaths");
     SetTrieValue(hSaveDeaths, steamId, deaths);
+
+    new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
+    new score = GetEntData(client, score_offset);
+    SetTrieValue(hSaveScore, steamId, score);
 
     g_playerReady[client] = false;
 
@@ -2073,7 +2084,6 @@ public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
 
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    ClearSaves();
     if (g_period == 1)
     {
         PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
