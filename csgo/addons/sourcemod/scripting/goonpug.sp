@@ -174,6 +174,7 @@ public OnPluginStart()
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     //HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
+    HookEvent("player_team", Event_PlayerTeam, EventHookMode_Pre);
 
     hPlayerRws = CreateTrie();
     hSortedClients = CreateArray();
@@ -927,6 +928,26 @@ public Action:Event_PlayerDisconnect(
     return Plugin_Continue;
 }
 
+public Action:Event_PlayerTeam(
+    Handle:event,
+    const String:name[],
+    bool:dontBroadcast)
+{
+    new userid = GetEventInt(event, "userid");
+    new team = GetEventInt(event, "team");
+    new client = GetClientOfUserId(userid);
+    new bool:auto = GetEventBool(event, "autoteam");
+
+    if (!auto || !IsValidPlayer(client) || IsFakeClient(client))
+    {
+        return Plugin_Continue;
+    }
+
+    FakeClientCommandEx(client, "jointeam %d", team);
+
+    return Plugin_Handled;
+}
+
 /**
  * Call the appropriate match state function
  *
@@ -958,6 +979,7 @@ OnAllReady()
             new timeval = GetConVarInt(time);
             PrintToChatAll("[GP] All players ready, resuming match in %d seconds.", timeval);
             g_matchState = MS_LIVE;
+            g_period++;
         }
 #if defined DEBUG
         default:
@@ -1753,7 +1775,28 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 
     switch (g_matchState)
     {
-        case MS_PICK_TEAMS, MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
+        case MS_PICK_TEAMS:
+        {
+            new GpTeam:assignedTeam = GP_TEAM_NONE;
+            new index = FindStringInArray(hTeam1, steamId);
+            if (index >= 0)
+            {
+                assignedTeam = GP_TEAM_1;
+            }
+            else
+            {
+                index = FindStringInArray(hTeam2, steamId);
+                if (index >= 0)
+                {
+                    assignedTeam = GP_TEAM_2;
+                }
+            }
+            if (assignedTeam != GP_TEAM_NONE) // already assigned to a team
+            {
+                GPChangeClientTeam(client, assignedTeam);
+            }
+        }
+        case MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
         {
             new period = g_period;
             if (period == 0)
@@ -1789,26 +1832,16 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     {
                         // Team 1 is CT in odd halfs, T in even
                         if (TryJoinTeam(client, GP_TEAM_1))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_1);
-                            PushArrayString(hTeam1, steamId);
-                        }
+                            GPChangeClientTeam(client, GP_TEAM_1);
                         else
-                        {
                             GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_2))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_2);
-                            PushArrayString(hTeam2, steamId);
-                        }
+                            GPChangeClientTeam(client, GP_TEAM_2);
                         else
-                        {
                             GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
                     }
                 }
                 else    // team == CS_TEAM_T
@@ -1817,26 +1850,16 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     {
                         // Team 1 is CT in odd halfs, T in even
                         if (TryJoinTeam(client, GP_TEAM_2))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_2);
-                            PushArrayString(hTeam2, steamId);
-                        }
+                            GPChangeClientTeam(client, GP_TEAM_2);
                         else
-                        {
                             GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_1))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_1);
-                            PushArrayString(hTeam1, steamId);
-                        }
+                            GPChangeClientTeam(client, GP_TEAM_1);
                         else
-                        {
                             GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
                     }
                 }
             }
@@ -1850,24 +1873,29 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 
 CountActivePlayers(GpTeam:team)
 {
-    decl Handle:hTeam;
+    new csTeam = CS_TEAM_SPECTATOR;
     if (team == GP_TEAM_1)
-        hTeam = hTeam1;
+    {
+        if (g_period % 2)
+            csTeam = CS_TEAM_T;
+        else
+            csTeam = CS_TEAM_CT;
+    }
     else if (team == GP_TEAM_2)
-        hTeam = hTeam2;
+    {
+        if (g_period % 2)
+            csTeam = CS_TEAM_CT;
+        else
+            csTeam = CS_TEAM_T;
+    }
     else
         return 0;
 
     new count = 0;
-    for (new i = 0; i < GetArraySize(hTeam); i++)
+    for (new i = 1; i <= MaxClients; i++)
     {
-        decl String:auth[STEAMID_LEN];
-        GetArrayString(hTeam, i, auth, sizeof(auth));
-        new client = FindClientByAuthString(auth);
-        if (client > 0 && (GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
-        {
+        if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == csTeam)
             count++;
-        }
     }
 
     return count;
@@ -2052,7 +2080,7 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
         g_matchState = MS_HALFTIME;
         StartReadyUp(true);
     }
-    else if ((g_period % 2) == 0)
+    else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
     {
         StartOvertimeVote();
     }
@@ -2061,7 +2089,6 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
         new Handle:pause = FindConVar("mp_halftime_pausetimer");
         SetConVarInt(pause, 0);
     }
-    g_period++;
 
     return Plugin_Continue;
 }
@@ -2180,6 +2207,7 @@ public VoteHandler_OvertimeVote(Handle:menu, num_votes, num_clients, const clien
         new Handle:time = FindConVar("mp_halftime_duration");
         new timeval = GetConVarInt(time);
         PrintToChatAll("[GP] Starting OT in in %d seconds.", timeval);
+        g_period++;
     }
     else
     {
