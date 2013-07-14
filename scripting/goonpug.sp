@@ -2009,7 +2009,10 @@ UploadDemo(const String:filename[])
     // know about
     new Handle:hForm = curl_httppost();
     decl String:key[PLATFORM_MAX_PATH];
-    Format(key, sizeof(key), "/%s/%s", ip, filename);
+    if (strlen(ip) > 0)
+        Format(key, sizeof(key), "%s/%s", ip, filename);
+    else
+        Format(key, sizeof(key), "%s", filename);
     curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
