@@ -44,7 +44,7 @@
 #include <smjansson>
 #include <zip>
 
-#define GOONPUG_VERSION "1.0.0-RC1"
+#define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
 #define MAX_CMD_LEN 32
 #define STEAMID_LEN 32
@@ -1297,12 +1297,12 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 
 DetermineFirstPick()
 {
-    g_captClients[0] = FindClientByName(g_capt1);
-    g_captClients[1] = FindClientByName(g_capt2);
+    new capt1 = FindClientByName(g_capt1);
+    new capt2 = FindClientByName(g_capt2);
     decl String:auth1[STEAMID_LEN];
-    GetClientAuthString(g_captClients[0], auth1, sizeof(auth1));
+    GetClientAuthString(capt1, auth1, sizeof(auth1));
     decl String:auth2[STEAMID_LEN];
-    GetClientAuthString(g_captClients[1], auth2, sizeof(auth2));
+    GetClientAuthString(capt2, auth2, sizeof(auth2));
     decl Float:capt1rws;
     if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
     {
@@ -1318,12 +1318,14 @@ DetermineFirstPick()
     if (capt1rws < capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-        g_firstPick = 0;
+        g_captClients[0] = capt1;
+        g_captClients[1] = capt2;
     }
     else if (capt1rws > capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-        g_firstPick = 1;
+        g_captClients[0] = capt2;
+        g_captClients[1] = capt1;
     }
     else
     {
@@ -1331,14 +1333,17 @@ DetermineFirstPick()
         if (rand == 0)
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-            g_firstPick = 0;
+            g_captClients[0] = capt1;
+            g_captClients[1] = capt2;
         }
         else
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-            g_firstPick = 1;
+            g_captClients[0] = capt2;
+            g_captClients[1] = capt1;
         }
     }
+    g_firstPick = 0;
 
     ChooseSides();
 }
@@ -1350,7 +1355,7 @@ ChooseSides()
     AddMenuItem(menu, "CT", "CT");
     AddMenuItem(menu, "T", "T");
     SetMenuExitButton(menu, false);
-    DisplayMenu(menu, g_captClients[g_firstPick ^ 1], 0);
+    DisplayMenu(menu, g_captClients[1], 0);
 }
 
 /**
@@ -1366,18 +1371,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             GetMenuItem(menu, param2, info, sizeof(info));
             if (StrEqual(info, "CT"))
             {
-                // Captain 2 should be team 1
-                if (g_firstPick == 1)
-                {
-                    SwapCaptains();
-                }
-            }
-            else
-            {
-                if (g_firstPick == 0)
-                {
-                    SwapCaptains();
-                }
+                SwapCaptains();
             }
             decl String:name[64];
             GetClientName(param1, name, sizeof(name));
