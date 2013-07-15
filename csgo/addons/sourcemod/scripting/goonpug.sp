@@ -174,7 +174,6 @@ public OnPluginStart()
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     //HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
-    HookEvent("player_team", Event_PlayerTeam, EventHookMode_Pre);
 
     hPlayerRws = CreateTrie();
     hSortedClients = CreateArray();
@@ -695,7 +694,7 @@ public Action:Timer_ReadyUp(Handle:timer)
                 {
                     decl String:name[64];
                     GetClientName(j, name, sizeof(name));
-                    if (!g_playerReady[j])
+                    if (!g_playerReady[j] && GetClientTeam(j) != CS_TEAM_SPECTATOR)
                     {
                         if (first)
                         {
@@ -905,26 +904,6 @@ public Action:Event_PlayerDisconnect(
     SetTrieValue(hSaveScore, auth, score);
 
     return Plugin_Continue;
-}
-
-public Action:Event_PlayerTeam(
-    Handle:event,
-    const String:name[],
-    bool:dontBroadcast)
-{
-    new userid = GetEventInt(event, "userid");
-    new team = GetEventInt(event, "team");
-    new client = GetClientOfUserId(userid);
-    new bool:auto = GetEventBool(event, "autoteam");
-
-    if (!auto || !IsValidPlayer(client) || IsFakeClient(client))
-    {
-        return Plugin_Continue;
-    }
-
-    FakeClientCommandEx(client, "jointeam %d", team);
-
-    return Plugin_Handled;
 }
 
 /**
@@ -1734,55 +1713,64 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     if (!IsValidPlayer(client) || IsFakeClient(client))
         return Plugin_Continue;
 
-    decl String:auth[STEAMID_LEN];
-    GetClientAuthString(client, auth, sizeof(auth));
-
-    decl cash;
-    if (GetTrieValue(hSaveCash, auth, cash))
-    {
-        SetEntProp(client, Prop_Send, "m_iAccount", cash);
-        RemoveFromTrie(hSaveCash, auth);
-    }
-
-    decl kills;
-    if (GetTrieValue(hSaveKills, auth, kills))
-    {
-        SetEntProp(client, Prop_Data, "m_iFrags", kills);
-        RemoveFromTrie(hSaveKills, auth);
-    }
-
-    decl assists;
-    if (GetTrieValue(hSaveAssists, auth, assists))
-    {
-        new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
-        SetEntData(client, assists_offset, assists);
-        RemoveFromTrie(hSaveAssists, auth);
-    }
-
-    decl deaths;
-    if (GetTrieValue(hSaveDeaths, auth, deaths))
-    {
-        SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
-        RemoveFromTrie(hSaveDeaths, auth);
-    }
-
-    decl score;
-    if (GetTrieValue(hSaveScore, auth, score))
-    {
-        new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
-        SetEntData(client, score_offset, score);
-        RemoveFromTrie(hSaveScore, auth);
-    }
-
     decl String:param[16];
     GetCmdArg(1, param, sizeof(param));
     StripQuotes(param);
     new team = StringToInt(param);
 
+    // Disable auto-join
+    if (!(team == CS_TEAM_T || team == CS_TEAM_CT || team == CS_TEAM_SPECTATOR))
+    {
+        GPChangeClientTeam(client, GP_TEAM_NONE);
+        return Plugin_Handled;
+    }
+
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
     // Always let players move to spec
     if (team == CS_TEAM_SPECTATOR)
     {
         return Plugin_Continue;
+    }
+    else
+    {
+        decl cash;
+        if (GetTrieValue(hSaveCash, auth, cash))
+        {
+            SetEntProp(client, Prop_Send, "m_iAccount", cash);
+            RemoveFromTrie(hSaveCash, auth);
+        }
+
+        decl kills;
+        if (GetTrieValue(hSaveKills, auth, kills))
+        {
+            SetEntProp(client, Prop_Data, "m_iFrags", kills);
+            RemoveFromTrie(hSaveKills, auth);
+        }
+
+        decl assists;
+        if (GetTrieValue(hSaveAssists, auth, assists))
+        {
+            new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
+            SetEntData(client, assists_offset, assists);
+            RemoveFromTrie(hSaveAssists, auth);
+        }
+
+        decl deaths;
+        if (GetTrieValue(hSaveDeaths, auth, deaths))
+        {
+            SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
+            RemoveFromTrie(hSaveDeaths, auth);
+        }
+
+        decl score;
+        if (GetTrieValue(hSaveScore, auth, score))
+        {
+            new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
+            SetEntData(client, score_offset, score);
+            RemoveFromTrie(hSaveScore, auth);
+        }
     }
 
     switch (g_matchState)
