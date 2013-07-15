@@ -885,6 +885,8 @@ public Action:Event_PlayerDisconnect(
         // open a player can just join.
     }
 
+    g_playerReady[client] = false;
+
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
     SetTrieValue(hSaveCash, auth, cash);
 
@@ -901,8 +903,6 @@ public Action:Event_PlayerDisconnect(
     new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
     new score = GetEntData(client, score_offset);
     SetTrieValue(hSaveScore, auth, score);
-
-    g_playerReady[client] = false;
 
     return Plugin_Continue;
 }
@@ -1316,17 +1316,16 @@ DetermineFirstPick()
     }
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt1, capt1rws);
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
+    g_captClients[0] = capt1;
+    g_captClients[1] = capt2;
     if (capt1rws < capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-        g_captClients[0] = capt1;
-        g_captClients[1] = capt2;
     }
     else if (capt1rws > capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-        g_captClients[0] = capt2;
-        g_captClients[1] = capt1;
+        SwapCaptains();
     }
     else
     {
@@ -1334,14 +1333,11 @@ DetermineFirstPick()
         if (rand == 0)
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-            g_captClients[0] = capt1;
-            g_captClients[1] = capt2;
         }
         else
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-            g_captClients[0] = capt2;
-            g_captClients[1] = capt1;
+            SwapCaptains();
         }
     }
     g_firstPick = 0;
@@ -1373,6 +1369,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             if (StrEqual(info, "CT"))
             {
                 SwapCaptains();
+                g_firstPick = 1;
             }
             decl String:name[64];
             GetClientName(param1, name, sizeof(name));
@@ -1402,7 +1399,6 @@ SwapCaptains()
     new tmp = g_captClients[0];
     g_captClients[0] = g_captClients[1];
     g_captClients[1] = tmp;
-    g_firstPick ^= g_firstPick;
 }
 
 /**
