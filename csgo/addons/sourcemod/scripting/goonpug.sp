@@ -297,6 +297,7 @@ public FetchRwsCb(Handle:hCurl, CURLcode:code, any:hPack)
                 new Float:rws = json_object_get_float(hPlayer, "average_rws");
                 SetTrieValue(hPlayerRws, auth, rws);
                 PrintToServer("Got RWS for player %s: %f", auth, rws);
+                PrintToServer("Got RWS for player %s: %f", auth, rws);
             }
             CloseHandle(hJson);
         }
@@ -2062,6 +2063,7 @@ UploadDemo(const String:filename[])
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
     PrintToServer("[GP] Uploading %s to S3...", filename);
+    LogMessage("[GP] Uploading %s to S3...", filename);
     WritePackCell(hPack, hForm);
     WritePackString(hPack, filename);
     curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
@@ -2069,7 +2071,7 @@ UploadDemo(const String:filename[])
 
 public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
 {
-    CloseHandle(hCurl);
+    new endpos = GetPackPosition(hPack);
     ResetPack(hPack);
     new Handle:hForm = ReadPackCell(hPack);
     CloseHandle(hForm);
@@ -2077,12 +2079,31 @@ public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
     if (CURLE_OK != code) {
         LogError("Curl could not upload demo (%i)", code);
         CloseHandle(hPack);
+        CloseHandle(hCurl);
         return;
     }
+
+    decl httpcode;
+    curl_easy_getinfo_int(hCurl, CURLINFO_RESPONSE_CODE, httpcode);
+    if (httpcode != 204)
+    {
+        LogError("Got unexpected response from AWS: %d", httpcode);
+    }
+    CloseHandle(hCurl);
 
     decl String:filename[PLATFORM_MAX_PATH];
     ReadPackString(hPack, filename, sizeof(filename));
     DeleteFile(filename);
+
+    decl String:receiveStr[CURL_BUFSIZE];
+    strcopy(receiveStr, sizeof(receiveStr), "");
+    while (GetPackPosition(hPack) < endpos)
+    {
+        decl String:buf[CURL_BUFSIZE];
+        ReadPackString(hPack, buf, sizeof(buf));
+        StrCat(receiveStr, sizeof(receiveStr), buf);
+    }
+    LogMessage("Upload demo returned: %s", receiveStr);
 
     CloseHandle(hPack);
 }
