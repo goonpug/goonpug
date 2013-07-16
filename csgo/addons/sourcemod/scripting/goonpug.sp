@@ -1611,9 +1611,25 @@ public Action:Timer_PickTeams(Handle:timer)
             ClearArray(hSortedClients);
             for (new i = 1; i <= MaxClients; i++)
             {
-                if (IsValidPlayer(i) && g_playerReady[i] && i != g_captClients[0] && i != g_captClients[1])
+                if (!IsValidPlayer(i) || IsFakeClient(i))
+                    continue;
+
+                if (i == g_captClients[0] || i == g_captClients[1])
+                    continue;
+
+                if (g_playerReady[i])
                 {
                     PushArrayCell(hSortedClients, i);
+                }
+            }
+
+            if (GetArraySize(hSortedClients) != g_maxPlayers - 2)
+            {
+                LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
+                LogError("Dumping pick list:");
+                for (new i = 0; i < GetArraySize(hSortedClients); i++)
+                {
+                    LogError("  %d: %d", i, GetArrayCell(hSortedClients, i));
                 }
             }
             SortADTArrayCustom(hSortedClients, RwsSortDescending);
