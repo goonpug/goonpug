@@ -1278,22 +1278,41 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 
 DetermineFirstPick()
 {
-    new capt1 = FindClientByName(g_capt1);
-    new capt2 = FindClientByName(g_capt2);
-    decl String:auth1[STEAMID_LEN];
-    GetClientAuthString(capt1, auth1, sizeof(auth1));
-    decl String:auth2[STEAMID_LEN];
-    GetClientAuthString(capt2, auth2, sizeof(auth2));
+    new capt1 = FindClientByName(g_capt1, true);
+    new capt2 = FindClientByName(g_capt2, true);
+
     decl Float:capt1rws;
-    if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
+    if (capt1 < 0)
     {
+        LogError("Got invalid client for captain: %s", g_capt1);
         capt1rws = 0.0;
     }
-    decl Float:capt2rws;
-    if (!GetTrieValue(hPlayerRws, auth2, capt2rws))
+    else
     {
+        decl String:auth1[STEAMID_LEN];
+        GetClientAuthString(capt1, auth1, sizeof(auth1));
+        if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
+        {
+            capt1rws = 0.0;
+        }
+    }
+
+    decl Float:capt2rws;
+    if (capt2 < 0)
+    {
+        LogError("Got invalid client for captain: %s", g_capt2);
         capt2rws = 0.0;
     }
+    else
+    {
+        decl String:auth2[STEAMID_LEN];
+        GetClientAuthString(capt2, auth2, sizeof(auth2));
+        if (!GetTrieValue(hPlayerRws, auth2, capt2rws))
+        {
+            capt2rws = 0.0;
+        }
+    }
+
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt1, capt1rws);
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
     g_captClients[0] = capt1;
@@ -1398,9 +1417,10 @@ FindClientByName(const String:name[], bool:exact=false)
         {
             decl String:clientName[64];
             GetClientName(i, clientName, sizeof(clientName));
-            if (exact && StrEqual(clientName, name))
+            if (exact)
             {
-                return i;
+                if (StrEqual(clientName, name))
+                    return i;
             }
             else
             {
@@ -1735,13 +1755,6 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     StripQuotes(param);
     new team = StringToInt(param);
 
-    // Disable auto-join
-    if (!(team == CS_TEAM_T || team == CS_TEAM_CT || team == CS_TEAM_SPECTATOR))
-    {
-        GPChangeClientTeam(client, GP_TEAM_NONE);
-        return Plugin_Handled;
-    }
-
     decl String:auth[STEAMID_LEN];
     GetClientAuthString(client, auth, sizeof(auth));
 
@@ -2057,8 +2070,8 @@ UploadDemo(const String:filename[])
     curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
                  "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "eyJleHBpcmF0aW9uIjogIjIwMTQtMDEtMDFUMDA6MDA6MDBaIiwNCiAgImNvbmRpdGlvbnMiOiBbIA0KICAgIHsiYnVja2V0IjogImdvb25wdWctZGVtb3MifSwgDQogICAgWyJzdGFydHMtd2l0aCIsICIka2V5IiwgIi8iXSwNCiAgICB7ImFjbCI6ICJwdWJsaWMtcmVhZCJ9LA0KICBdDQp9", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "8RrNPLHjNXuCe6k2GGWwAAul3p0=", CURLFORM_END);
+                 "ewogICJjb25kaXRpb25zIjogWwogICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyIgfSwKICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIiB9LAogIF0KfQo", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "OLO2vWUm4eIb4HfjUYyeXMxO6do=", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
