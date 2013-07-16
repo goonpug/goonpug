@@ -121,6 +121,7 @@ new Handle:hSaveKills = INVALID_HANDLE;
 new Handle:hSaveAssists = INVALID_HANDLE;
 new Handle:hSaveDeaths = INVALID_HANDLE;
 new Handle:hSaveScore = INVALID_HANDLE;
+new Handle:hSaveMvps = INVALID_HANDLE;
 
 /**
  * Public plugin info
@@ -185,6 +186,7 @@ public OnPluginStart()
     hSaveAssists = CreateTrie();
     hSaveDeaths = CreateTrie();
     hSaveScore = CreateTrie();
+    hSaveMvps = CreateTrie();
 
     ResetReadyUp();
 }
@@ -219,6 +221,8 @@ public OnPluginEnd()
         CloseHandle(hSaveDeaths);
     if (hSaveScore != INVALID_HANDLE)
         CloseHandle(hSaveScore);
+    if (hSaveMvps != INVALID_HANDLE)
+        CloseHandle(hSaveMvps);
 }
 
 public OnClientAuthorized(client, const String:auth[])
@@ -364,6 +368,7 @@ ClearSaves()
     ClearTrie(hSaveAssists);
     ClearTrie(hSaveDeaths);
     ClearTrie(hSaveScore);
+    ClearTrie(hSaveMvps);
 }
 
 /**
@@ -890,19 +895,20 @@ public Action:Event_PlayerDisconnect(
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
     SetTrieValue(hSaveCash, auth, cash);
 
-    new kills = GetEntProp(client, Prop_Data, "m_iFrags");
+    new kills = GetClientFrags(client);
     SetTrieValue(hSaveKills, auth, kills);
 
-    new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
-    new assists = GetEntData(client, assists_offset);
+    new assists = CS_GetClientAssists(client);
     SetTrieValue(hSaveAssists, auth, assists);
 
-    new deaths = GetEntProp(client, Prop_Data, "m_iDeaths");
+    new deaths = GetClientDeaths(client);
     SetTrieValue(hSaveDeaths, auth, deaths);
 
-    new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
-    new score = GetEntData(client, score_offset);
+    new score = CS_GetClientContributionScore(client);
     SetTrieValue(hSaveScore, auth, score);
+
+    new mvps = CS_GetMVPCount(client);
+    SetTrieValue(hSaveMvps, auth, mvps);
 
     return Plugin_Continue;
 }
@@ -1782,8 +1788,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         decl assists;
         if (GetTrieValue(hSaveAssists, auth, assists))
         {
-            new assists_offset = FindDataMapOffs(client, "m_iFrags") + 4;
-            SetEntData(client, assists_offset, assists);
+            CS_SetClientAssists(client, assists);
             RemoveFromTrie(hSaveAssists, auth);
         }
 
@@ -1797,9 +1802,15 @@ public Action:Command_Jointeam(client, const String:command[], argc)
         decl score;
         if (GetTrieValue(hSaveScore, auth, score))
         {
-            new score_offset = FindSendPropInfo( "CCSPlayer", "m_bIsControllingBot" ) - 132;
-            SetEntData(client, score_offset, score);
+            CS_SetClientContributionScore(client, score);
             RemoveFromTrie(hSaveScore, auth);
+        }
+
+        decl mvps;
+        if (GetTrieValue(hSaveMvps, auth, mvps))
+        {
+            CS_SetMVPCount(client, mvps);
+            RemoveFromTrie(hSaveMvps, auth);
         }
     }
 
