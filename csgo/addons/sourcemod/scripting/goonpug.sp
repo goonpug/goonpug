@@ -2073,16 +2073,17 @@ UploadDemo(const String:filename[])
     new Handle:hForm = curl_httppost();
     decl String:key[PLATFORM_MAX_PATH];
     if (strlen(ip) > 0)
-        Format(key, sizeof(key), "%s/%s", ip, filename);
+        Format(key, sizeof(key), "uploads/gotv/%s/%s", ip, filename);
     else
-        Format(key, sizeof(key), "%s", filename);
+        Format(key, sizeof(key), "uploads/gotv/unknown/%s", filename);
     curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
                  "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "ewogICJjb25kaXRpb25zIjogWwogICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyIgfSwKICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIiB9LAogIF0KfQo", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "OLO2vWUm4eIb4HfjUYyeXMxO6do=", CURLFORM_END);
+                 "eyJleHBpcmF0aW9uIjogIjIwMTQtMDEtMDFUMDA6MDA6MDBaIiwKICAgICJjb25kaXRpb25zIjogWyAKICAgICAgICB7ImJ1Y2tldCI6ICJnb29ucHVnLWRlbW9zIn0sIAogICAgICAgIFsic3RhcnRzLXdpdGgiLCAiJGtleSIsICJ1cGxvYWRzLyJdLAogICAgICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIn0sCiAgICAgICAgeyIkQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL3ppcCJ9LAogICAgXQp9Cg==", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "Ba/MW2uRtLv405nsYdO+Q+UuzDk=", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "Content-Type", CURLFORM_COPYCONTENTS, "application/zip", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
