@@ -175,6 +175,7 @@ public OnPluginStart()
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     //HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
+    HookEvent("player_team", Event_PlayerTeam);
 
     hPlayerRws = CreateTrie();
     hSortedClients = CreateArray();
@@ -909,6 +910,29 @@ public Action:Event_PlayerDisconnect(
 
     new mvps = CS_GetMVPCount(client);
     SetTrieValue(hSaveMvps, auth, mvps);
+
+    return Plugin_Continue;
+}
+
+public Action:Event_PlayerTeam(
+    Handle:event,
+    const String:name[],
+    bool:dontBroadcast)
+{
+    new userid = GetEventInt(event, "userid");
+    new client = GetClientOfUserId(userid);
+    new oldteam = GetEventInt(event, "oldteam");
+
+    if (client < 1 || IsFakeClient(client))
+    {
+        return Plugin_Continue;
+    }
+
+    // Sanity check this because of auto-join timer stupidity
+    if (oldteam == CS_TEAM_NONE)
+    {
+        FakeClientCommandEx(client, "jointeam \"%d\"", CS_TEAM_NONE);
+    }
 
     return Plugin_Continue;
 }
@@ -1832,10 +1856,13 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     assignedTeam = GP_TEAM_2;
                 }
             }
-            if (assignedTeam != GP_TEAM_NONE) // already assigned to a team
+            if (assignedTeam == GP_TEAM_NONE)
             {
-                GPChangeClientTeam(client, assignedTeam);
+                PrintToChat(client, "[GP] You cannot join a team until you are picked");
             }
+            GPChangeClientTeam(client, assignedTeam);
+
+            return Plugin_Handled;
         }
         case MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
         {
@@ -1873,35 +1900,38 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     {
                         // Team 1 is CT in odd halfs, T in even
                         if (TryJoinTeam(client, GP_TEAM_1))
-                            GPChangeClientTeam(client, GP_TEAM_1);
-                        else
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
+                            assignedTeam = GP_TEAM_1;
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_2))
-                            GPChangeClientTeam(client, GP_TEAM_2);
-                        else
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
+                            assignedTeam = GP_TEAM_2;
                     }
                 }
                 else    // team == CS_TEAM_T
                 {
                     if (period % 2)
                     {
-                        // Team 1 is CT in odd halfs, T in even
+                        // Team 2 is T in odd halfs, CT in even
                         if (TryJoinTeam(client, GP_TEAM_2))
-                            GPChangeClientTeam(client, GP_TEAM_2);
-                        else
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
+                            assignedTeam = GP_TEAM_2;
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_1))
-                            GPChangeClientTeam(client, GP_TEAM_1);
-                        else
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
+                            assignedTeam = GP_TEAM_1;
                     }
+                }
+
+                if (assignedTeam == GP_TEAM_NONE)
+                {
+                    if (team == CS_TEAM_CT)
+                        PrintToChat(client, "[GP] The CT team is current full.");
+                    else if (team == CS_TEAM_T)
+                        PrintToChat(client, "[GP] The T team is current full.");
+                    else
+                        PrintToChat(client, "[GP] You cannot auto-assign right now.");
+                    GPChangeClientTeam(client, assignedTeam);
                 }
             }
 
@@ -1945,7 +1975,7 @@ CountActivePlayers(GpTeam:team)
 bool:TryJoinTeam(client, GpTeam:team)
 {
     new count = CountActivePlayers(team);
-    if (count < g_maxPlayers / 2)
+    if (count < (g_maxPlayers / 2))
     {
         GPChangeClientTeam(client, team);
         return true;
