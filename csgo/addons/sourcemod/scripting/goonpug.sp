@@ -1948,16 +1948,16 @@ CountActivePlayers(GpTeam:team)
     if (team == GP_TEAM_1)
     {
         if (g_period % 2)
-            csTeam = CS_TEAM_T;
-        else
             csTeam = CS_TEAM_CT;
+        else
+            csTeam = CS_TEAM_T;
     }
     else if (team == GP_TEAM_2)
     {
         if (g_period % 2)
-            csTeam = CS_TEAM_CT;
-        else
             csTeam = CS_TEAM_T;
+        else
+            csTeam = CS_TEAM_CT;
     }
     else
         return 0;
