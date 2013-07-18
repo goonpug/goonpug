@@ -1952,17 +1952,21 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 
 CountActivePlayers(GpTeam:team)
 {
+    new period = g_period;
+    if (period == 0)
+        period = 1;
+
     new csTeam = CS_TEAM_SPECTATOR;
     if (team == GP_TEAM_1)
     {
-        if (g_period % 2)
+        if (period % 2)
             csTeam = CS_TEAM_CT;
         else
             csTeam = CS_TEAM_T;
     }
     else if (team == GP_TEAM_2)
     {
-        if (g_period % 2)
+        if (period % 2)
             csTeam = CS_TEAM_T;
         else
             csTeam = CS_TEAM_CT;
