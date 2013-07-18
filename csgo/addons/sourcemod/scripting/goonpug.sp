@@ -351,6 +351,13 @@ public OnMapStart()
 
 public OnMapEnd()
 {
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
+        {
+            ChangeClientTeam(i, CS_TEAM_SPECTATOR);
+        }
+    }
 }
 
 DoPreLive()
@@ -1890,6 +1897,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                 {
                     PrintToChat(client, "[GP] You are assigned to a team but it is currently full.");
                     PrintToChat(client, "[GP] A substitute player must leave the game or join the spectators before you can rejoin.");
+                    ChangeClientTeam(client, CS_TEAM_SPECTATOR);
                 }
             }
             else
@@ -1975,6 +1983,7 @@ CountActivePlayers(GpTeam:team)
 bool:TryJoinTeam(client, GpTeam:team)
 {
     new count = CountActivePlayers(team);
+    PrintToServer("[GP] Got %d/%d active players for GP team %d", count, g_maxPlayers / 2, team);
     if (count < (g_maxPlayers / 2))
     {
         GPChangeClientTeam(client, team);
