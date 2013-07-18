@@ -2120,8 +2120,8 @@ UploadDemo(const String:filename[])
     curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
                  "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "eyAgICAiZXhwaXJhdGlvbiI6ICIyMDE0LTAxLTAxVDAwOjAwOjAwWiIsICAgICJjb25kaXRpb25zIjogWyAgICAgICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyJ9LCAgICAgICAgWyJzdGFydHMtd2l0aCIsICIka2V5IiwgInVwbG9hZHMvIl0sICAgICAgICB7ImFjbCI6ICJwdWJsaWMtcmVhZCJ9LCAgICAgICAgeyIkQ29udGVudC1UeXBlIjogImFwcGxpY2F0aW9uL3ppcCJ9ICAgIF19", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "cSEu8oE0SpU660frBcpgZGoRQxU=", CURLFORM_END);
+                 "ewogICAgImV4cGlyYXRpb24iOiAiMjAxNC0wMS0wMVQwMDowMDowMFoiLAogICAgImNvbmRpdGlvbnMiOiBbCiAgICAgICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyJ9LAogICAgICAgIFsic3RhcnRzLXdpdGgiLCAiJGtleSIsICJ1cGxvYWRzLyJdLAogICAgICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIn0sCiAgICAgICAgeyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vemlwIn0KICAgIF0KfQ==", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "nh4qMbsylhC3xb+z2ybQ/Yzh4Ks=", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "Content-Type", CURLFORM_COPYCONTENTS, "application/zip", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
