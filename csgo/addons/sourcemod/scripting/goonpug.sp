@@ -683,8 +683,14 @@ public Action:Timer_ReadyUp(Handle:timer)
         return Plugin_Stop;
     }
 
+    new neededCount = g_maxPlayers;
+    if (g_matchState == MS_HALFTIME)
+    {
+        neededCount = CountActivePlayers(GP_TEAM_1) + CountActivePlayers(GP_TEAM_2);
+    }
+
     new readyCount = CountReady();
-    if (readyCount == g_maxPlayers)
+    if (readyCount == neededCount)
     {
         OnAllReady();
         return Plugin_Stop;
@@ -695,7 +701,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
             decl String:msg[1024];
-            Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, g_maxPlayers);
+            Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, neededCount);
 
             if (g_playerReady[i])
                 StrCat(msg, sizeof(msg), "You are ready\n");
@@ -929,6 +935,7 @@ public Action:Event_PlayerTeam(
     new userid = GetEventInt(event, "userid");
     new client = GetClientOfUserId(userid);
     new oldteam = GetEventInt(event, "oldteam");
+    new team = GetEventInt(event, "team");
 
     if (client < 1 || IsFakeClient(client))
     {
@@ -938,7 +945,7 @@ public Action:Event_PlayerTeam(
     // Sanity check this because of auto-join timer stupidity
     if (oldteam == CS_TEAM_NONE)
     {
-        FakeClientCommandEx(client, "jointeam \"%d\"", CS_TEAM_NONE);
+        FakeClientCommandEx(client, "jointeam \"%d\"", team);
     }
 
     return Plugin_Continue;
@@ -1800,7 +1807,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     {
         return Plugin_Continue;
     }
-    else
+    else if (team != CS_TEAM_NONE)
     {
         decl cash;
         if (GetTrieValue(hSaveCash, auth, cash))
@@ -2009,6 +2016,7 @@ StartLiveMatch()
     StartServerDemo();
     g_matchState = MS_LIVE;
     g_period = 1;
+    ServerCommand("mp_warmup_end\n");
     ServerCommand("exec goonpug_pug.cfg\n");
     PrintToChatAll("[GP] Live after restart!!!");
     ServerCommand("mp_restartgame 10\n");
