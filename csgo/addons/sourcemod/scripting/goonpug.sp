@@ -93,8 +93,8 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRws = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
-new String:g_capt1[64];
-new String:g_capt2[64];
+new String:g_capt1[MAX_NAME_LENGTH];
+new String:g_capt2[MAX_NAME_LENGTH];
 new g_captClients[2];
 new g_firstPick = 0;
 new g_period = 0;
@@ -233,7 +233,7 @@ public OnClientAuthorized(client, const String:auth[])
         return;
     }
 
-    decl String:playerName[64];
+    decl String:playerName[MAX_NAME_LENGTH];
     GetClientName(client, playerName, sizeof(playerName));
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
@@ -712,7 +712,7 @@ public Action:Timer_ReadyUp(Handle:timer)
             {
                 if (IsValidPlayer(j) && !IsFakeClient(j))
                 {
-                    decl String:name[64];
+                    decl String:name[MAX_NAME_LENGTH];
                     GetClientName(j, name, sizeof(name));
                     if (!g_playerReady[j] && GetClientTeam(j) != CS_TEAM_SPECTATOR)
                     {
@@ -794,7 +794,7 @@ public Action:Command_Ready(client, args)
     {
         switch (g_matchState)
         {
-            case MS_PRE_LIVE, MS_HALFTIME:
+            case MS_PRE_LIVE:
             {
                 decl String:auth[STEAMID_LEN];
                 GetClientAuthString(client, auth, sizeof(auth));
@@ -820,9 +820,18 @@ public Action:Command_Ready(client, args)
                     return Plugin_Handled;
                 }
             }
+            case MS_HALFTIME:
+            {
+                new team = GetClientTeam(client);
+                if (CS_TEAM_CT != team && CS_TEAM_T != team)
+                {
+                    PrintToChat(client, "[GP] You cannot ready up right now.");
+                    return Plugin_Handled;
+                }
+            }
         }
 
-        decl String:name[64];
+        decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
         PrintToChatAll("[GP] %s is now ready.", name);
@@ -846,16 +855,27 @@ public Action:Command_Unready(client, args)
         return Plugin_Handled;
     }
 
+
     if (!g_playerReady[client])
     {
         PrintToChat(client, "[GP] You are already not ready.");
     }
     else
     {
-        decl String:name[64];
-        GetClientName(client, name, sizeof(name));
-        g_playerReady[client] = false;
-        PrintToChatAll("[GP] %s is no longer ready.", name);
+        switch (g_matchState)
+        {
+            case MS_PICK_CAPTAINS, MS_PICK_TEAMS:
+            {
+                PrintToChat(client, "[GP] You cannot unready right now as it would break team picking.");
+            }
+            default:
+            {
+                decl String:name[MAX_NAME_LENGTH];
+                GetClientName(client, name, sizeof(name));
+                g_playerReady[client] = false;
+                PrintToChatAll("[GP] %s is no longer ready.", name);
+            }
+        }
     }
 
     return Plugin_Handled;
@@ -879,9 +899,9 @@ public Action:Event_PlayerDisconnect(
 
     decl String:auth[STEAMID_LEN];
     GetClientAuthString(client, auth, sizeof(auth));
-    decl String:playerName[64];
+    decl String:playerName[MAX_NAME_LENGTH];
     GetClientName(client, playerName, sizeof(playerName));
-    decl String:reason[64];
+    decl String:reason[MAX_NAME_LENGTH];
     GetEventString(event, "reason", reason, sizeof(reason));
 
     PrintToChatAll("\x01\x0b\x04%s disconnected: %s", playerName, reason);
@@ -890,10 +910,10 @@ public Action:Event_PlayerDisconnect(
     {
         case MS_PICK_CAPTAINS, MS_PICK_TEAMS:
         {
-            g_matchState = MS_PICK_CAPTAINS;
-
             if (g_playerReady[client])
             {
+                g_matchState = MS_PICK_CAPTAINS;
+
                 if (IsVoteInProgress())
                     CancelVote();
                 PrintToChatAll("[GP] Will restart picking teams when we have enough players...");
@@ -1204,11 +1224,11 @@ ChooseCaptains()
         {
             decl String:auth[STEAMID_LEN];
             GetClientAuthString(client, auth, sizeof(auth));
-            decl String:name[64];
+            decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
             decl Float:rws;
             GetTrieValue(hPlayerRws, auth, rws);
-            decl String:display[64];
+            decl String:display[MAX_NAME_LENGTH * 2];
             Format(display, sizeof(display), "(%.2f) %s", rws, name);
             AddMenuItem(menu, name, display);
             count++;
@@ -1414,7 +1434,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
                 SwapCaptains();
                 g_firstPick = 1;
             }
-            decl String:name[64];
+            decl String:name[MAX_NAME_LENGTH];
             GetClientName(param1, name, sizeof(name));
             PrintToChatAll("[GP] %s will take %s side first.", name, info);
         }
@@ -1435,7 +1455,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
  */
 SwapCaptains()
 {
-    decl String:tmpname[64];
+    decl String:tmpname[MAX_NAME_LENGTH];
     strcopy(tmpname, sizeof(tmpname), g_capt1);
     strcopy(g_capt1, sizeof(g_capt1), g_capt2);
     strcopy(g_capt2, sizeof(g_capt2), tmpname);
@@ -1459,7 +1479,7 @@ FindClientByName(const String:name[], bool:exact=false)
     {
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
-            decl String:clientName[64];
+            decl String:clientName[MAX_NAME_LENGTH];
             GetClientName(i, clientName, sizeof(clientName));
             if (exact)
             {
@@ -1516,11 +1536,38 @@ PickTeams()
 {
     g_matchState = MS_PICK_TEAMS;
     g_period = 0;
-    SetTeamNames(g_capt1, g_capt2);
     ClearTeams();
+    SetTeamNames(g_capt1, g_capt2);
     ForceAllSpec();
     ForcePlayerTeam(g_captClients[0], GP_TEAM_1);
     ForcePlayerTeam(g_captClients[1], GP_TEAM_2);
+
+    ClearArray(hSortedClients);
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (!IsValidPlayer(i) || IsFakeClient(i))
+            continue;
+
+        if (i == g_captClients[0] || i == g_captClients[1])
+            continue;
+
+        if (g_playerReady[i])
+        {
+            PushArrayCell(hSortedClients, i);
+        }
+    }
+
+    if (GetArraySize(hSortedClients) != g_maxPlayers - 2)
+    {
+        LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
+        LogError("Dumping pick list:");
+        for (new i = 0; i < GetArraySize(hSortedClients); i++)
+        {
+            LogError("  %d: %d", i, GetArrayCell(hSortedClients, i));
+        }
+    }
+    SortADTArrayCustom(hSortedClients, RwsSortDescending);
+
     if (hTeamPickMenu != INVALID_HANDLE)
     {
         CloseHandle(hTeamPickMenu);
@@ -1668,58 +1715,31 @@ public Action:Timer_PickTeams(Handle:timer)
         }
         return Plugin_Stop;
     }
+
+    if (pickNum == 1)
+    {
+        g_whosePick = g_firstPick;
+        pickCount = 1;
+    }
+
+    if (pickCount == 2)
+    {
+        g_whosePick ^= 1;
+        pickCount = 0;
+    }
+
+    if (g_whosePick == 0)
+    {
+        PrintToChatAll("[GP] %s's pick...", g_capt1);
+    }
     else
     {
-        if (pickNum == 1)
-        {
-            g_whosePick = g_firstPick;
-            ClearArray(hSortedClients);
-            for (new i = 1; i <= MaxClients; i++)
-            {
-                if (!IsValidPlayer(i) || IsFakeClient(i))
-                    continue;
-
-                if (i == g_captClients[0] || i == g_captClients[1])
-                    continue;
-
-                if (g_playerReady[i])
-                {
-                    PushArrayCell(hSortedClients, i);
-                }
-            }
-
-            if (GetArraySize(hSortedClients) != g_maxPlayers - 2)
-            {
-                LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
-                LogError("Dumping pick list:");
-                for (new i = 0; i < GetArraySize(hSortedClients); i++)
-                {
-                    LogError("  %d: %d", i, GetArrayCell(hSortedClients, i));
-                }
-            }
-            SortADTArrayCustom(hSortedClients, RwsSortDescending);
-            pickCount = 1;
-        }
-
-        if (pickCount == 2)
-        {
-            g_whosePick ^= 1;
-            pickCount = 0;
-        }
-
-        if (g_whosePick == 0)
-        {
-            PrintToChatAll("[GP] %s's pick...", g_capt1);
-        }
-        else
-        {
-            PrintToChatAll("[GP] %s's pick...", g_capt2);
-        }
-        hTeamPickMenu = BuildPickMenu();
-        DisplayMenu(hTeamPickMenu, g_captClients[g_whosePick], 0);
-        pickCount++;
-        pickNum++;
+        PrintToChatAll("[GP] %s's pick...", g_capt2);
     }
+    hTeamPickMenu = BuildPickMenu();
+    DisplayMenu(hTeamPickMenu, g_captClients[g_whosePick], 0);
+    pickCount++;
+    pickNum++;
 
     return Plugin_Continue;
 }
@@ -1733,14 +1753,14 @@ Handle:BuildPickMenu()
     for (new i = 0; i < GetArraySize(hSortedClients); i++)
     {
         new client = GetArrayCell(hSortedClients, i);
-        decl String:name[64];
+        decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
         decl String:auth[STEAMID_LEN];
         GetClientAuthString(client, auth, sizeof(auth));
         decl Float:rws;
         if (!GetTrieValue(hPlayerRws, auth, rws))
             rws = 0.0;
-        decl String:display[64];
+        decl String:display[MAX_NAME_LENGTH];
         Format(display, sizeof(display), "(%.2f) %s", rws, name);
         AddMenuItem(menu, name, display);
     }
@@ -1759,7 +1779,7 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
     {
         case MenuAction_Select:
         {
-            decl String:pickName[64];
+            decl String:pickName[MAX_NAME_LENGTH];
             GetMenuItem(menu, param2, pickName, sizeof(pickName));
             new pick = FindClientByName(pickName, true);
 
