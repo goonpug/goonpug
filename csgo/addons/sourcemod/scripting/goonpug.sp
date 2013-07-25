@@ -237,6 +237,7 @@ public OnClientAuthorized(client, const String:auth[])
     GetClientName(client, playerName, sizeof(playerName));
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
+    g_playerReady[client] = false;
     FetchPlayerRws(auth);
 }
 
@@ -1688,7 +1689,10 @@ public Action:Timer_PickTeams(Handle:timer)
     static pickCount = 0;
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
+    {
+        LogError("Got invalid state in Timer_PickTeams: %d", g_matchState);
         return Plugin_Stop;
+    }
 
     // If invalid we can start the next pick.
     if (hTeamPickMenu != INVALID_HANDLE)
@@ -1736,7 +1740,7 @@ public Action:Timer_PickTeams(Handle:timer)
     {
         PrintToChatAll("[GP] %s's pick...", g_capt2);
     }
-    hTeamPickMenu = BuildPickMenu();
+    hTeamPickMenu = BuildPickMenu(pickNum);
     DisplayMenu(hTeamPickMenu, g_captClients[g_whosePick], 0);
     pickCount++;
     pickNum++;
@@ -1747,9 +1751,19 @@ public Action:Timer_PickTeams(Handle:timer)
 /**
  * Builds a menu with a list of pickable players
  */
-Handle:BuildPickMenu()
+Handle:BuildPickMenu(pickNum)
 {
     new Handle:menu = CreateMenu(Menu_PickPlayer);
+    if (GetArraySize(hSortedClients) != g_maxPlayers - 2 - (pickNum + 1))
+    {
+        LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
+        LogError("Dumping pick list:");
+        for (new i = 0; i < GetArraySize(hSortedClients); i++)
+        {
+            new client = GetArrayCell(hSortedClients, i);
+            LogError("  %d: client %d, ready: %d", i, client, g_playerReady[client]);
+        }
+    }
     for (new i = 0; i < GetArraySize(hSortedClients); i++)
     {
         new client = GetArrayCell(hSortedClients, i);
