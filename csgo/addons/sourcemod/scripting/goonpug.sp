@@ -241,6 +241,50 @@ public OnClientAuthorized(client, const String:auth[])
     FetchPlayerRws(auth);
 }
 
+ChangeMatchState(MatchState:newState)
+{
+    g_matchState = newState;
+    switch (g_matchState)
+    {
+        case MS_WARMUP:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_WARMUP\"");
+        }
+        case MS_MAP_VOTE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_MAP_VOTE\"");
+        }
+        case MS_PICK_CAPTAINS:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PICK_CAPTAINS\"");
+        }
+        case MS_PICK_TEAMS:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PICK_TEAMS\"");
+        }
+        case MS_PRE_LIVE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PRE_LIVE\"");
+        }
+        case MS_LIVE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_LIVE\"");
+        }
+        case MS_OT:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_OT\"");
+        }
+        case MS_HALFTIME:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_HALFTIME\"");
+        }
+        case MS_POST_MATCH:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_POST_MATCH\"");
+        }
+    }
+}
+
 FetchPlayerRws(const String:auth[])
 {
     new Handle:hCurl = curl_easy_init();
@@ -343,7 +387,7 @@ public OnMapStart()
         }
         case MS_POST_MATCH:
         {
-            g_matchState = MS_WARMUP;
+            ChangeMatchState(MS_WARMUP);
             ServerCommand("exec goonpug_warmup.cfg\n");
             StartReadyUp(true);
         }
@@ -913,10 +957,7 @@ public Action:Event_PlayerDisconnect(
         {
             if (g_playerReady[client])
             {
-                g_matchState = MS_PICK_CAPTAINS;
-
-                if (IsVoteInProgress())
-                    CancelVote();
+                ChangeMatchState(MS_PICK_CAPTAINS);
                 PrintToChatAll("[GP] Will restart picking teams when we have enough players...");
                 StartReadyUp(false);
             }
@@ -1002,7 +1043,7 @@ OnAllReady()
             new Handle:time = FindConVar("mp_halftime_duration");
             new timeval = GetConVarInt(time);
             PrintToChatAll("[GP] All players ready, resuming match in %d seconds.", timeval);
-            g_matchState = MS_LIVE;
+            ChangeMatchState(MS_LIVE);
             g_period++;
         }
 #if defined DEBUG
@@ -1019,7 +1060,7 @@ OnAllReady()
  */
 ChooseMatchMap()
 {
-    g_matchState = MS_MAP_VOTE;
+    ChangeMatchState(MS_MAP_VOTE);
     new Handle:menu = BuildMapVoteMenu();
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
@@ -1207,7 +1248,7 @@ public Action:Timer_MatchInfo(Handle:timer)
 
 ChooseCaptains()
 {
-    g_matchState = MS_PICK_CAPTAINS;
+    ChangeMatchState(MS_PICK_CAPTAINS);
     StartMatchInfoText();
 
     SortPlayersByRws();
@@ -1382,6 +1423,8 @@ DetermineFirstPick()
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
     g_captClients[0] = capt1;
     g_captClients[1] = capt2;
+    LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
+    LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
     if (capt1rws < capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
@@ -1438,6 +1481,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(param1, name, sizeof(name));
             PrintToChatAll("[GP] %s will take %s side first.", name, info);
+            LogAction(param1, -1, "\"%L\" chose side \"%s\"", param1, info);
         }
         case MenuAction_End:
         {
@@ -1535,7 +1579,7 @@ FindClientByAuthString(const String:auth[])
  */
 PickTeams()
 {
-    g_matchState = MS_PICK_TEAMS;
+    ChangeMatchState(MS_PICK_TEAMS);
     g_period = 0;
     ClearTeams();
     SetTeamNames(g_capt1, g_capt2);
@@ -1706,7 +1750,7 @@ public Action:Timer_PickTeams(Handle:timer)
         GetCurrentMap(curmap, sizeof(curmap));
         decl String:nextmap[MAX_MAPNAME_LEN];
         GetNextMap(nextmap, sizeof(nextmap));
-        g_matchState = MS_PRE_LIVE;
+        ChangeMatchState(MS_PRE_LIVE);
         if (!StrEqual(nextmap, curmap))
         {
             PrintToChatAll("[GP] Changing map to %s in 10 seconds...", nextmap);
@@ -1800,11 +1844,13 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
             if (g_whosePick == 0)
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt1, pickName);
+                LogAction(g_captClients[0], pick, "\"%L\" picked \"%L\"", g_captClients[0], pick);
                 ForcePlayerTeam(pick, GP_TEAM_1);
             }
             else
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt2, pickName);
+                LogAction(g_captClients[1], pick, "\"%L\" picked \"%L\"", g_captClients[1], pick);
                 ForcePlayerTeam(pick, GP_TEAM_2);
             }
 
@@ -2048,7 +2094,7 @@ public Action:Timer_ChangeMap(Handle:timer)
 StartLiveMatch()
 {
     StartServerDemo();
-    g_matchState = MS_LIVE;
+    ChangeMatchState(MS_LIVE);
     g_period = 1;
     ServerCommand("mp_warmup_end\n");
     ServerCommand("exec goonpug_pug.cfg\n");
@@ -2223,7 +2269,7 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
     if (g_period == 1)
     {
         PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
-        g_matchState = MS_HALFTIME;
+        ChangeMatchState(MS_HALFTIME);
         StartReadyUp(true);
     }
     else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
@@ -2250,7 +2296,7 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
 
 PostMatch(bool:abort=false)
 {
-    g_matchState = MS_POST_MATCH;
+    ChangeMatchState(MS_POST_MATCH);
     if (abort)
     {
         StopServerDemo(false);
@@ -2281,7 +2327,7 @@ PostMatch(bool:abort=false)
     else
     {
         PrintToChatAll("[GP] Skipping warmup map change.");
-        g_matchState = MS_WARMUP;
+        ChangeMatchState(MS_WARMUP);
         ServerCommand("exec goonpug_warmup.cfg\n");
         StartReadyUp(true);
     }
@@ -2347,7 +2393,7 @@ public VoteHandler_OvertimeVote(Handle:menu, num_votes, num_clients, const clien
     if (StrEqual(result, "Yes") && winningvotes > required)
     {
         PrintToChatAll("[GP] Vote to play OT wins (%0.f%%).", (winningvotes / float(num_votes) * 100.0));
-        g_matchState = MS_OT;
+        ChangeMatchState(MS_OT);
         new Handle:pause = FindConVar("mp_halftime_pausetimer");
         SetConVarInt(pause, 0);
         new Handle:time = FindConVar("mp_halftime_duration");
