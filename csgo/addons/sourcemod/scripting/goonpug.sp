@@ -44,7 +44,7 @@
 #include <smjansson>
 #include <zip>
 
-#define GOONPUG_VERSION "1.0.0-RC1"
+#define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
 #define MAX_CMD_LEN 32
 #define STEAMID_LEN 32
@@ -93,8 +93,8 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRws = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
-new String:g_capt1[64];
-new String:g_capt2[64];
+new String:g_capt1[MAX_NAME_LENGTH];
+new String:g_capt2[MAX_NAME_LENGTH];
 new g_captClients[2];
 new g_firstPick = 0;
 new g_period = 0;
@@ -121,6 +121,7 @@ new Handle:hSaveKills = INVALID_HANDLE;
 new Handle:hSaveAssists = INVALID_HANDLE;
 new Handle:hSaveDeaths = INVALID_HANDLE;
 new Handle:hSaveScore = INVALID_HANDLE;
+new Handle:hSaveMvps = INVALID_HANDLE;
 
 /**
  * Public plugin info
@@ -174,6 +175,7 @@ public OnPluginStart()
     HookEvent("cs_win_panel_match", Event_CsWinPanelMatch);
     //HookEvent("player_death", Event_PlayerDeath);
     HookEvent("player_disconnect", Event_PlayerDisconnect);
+    HookEvent("player_team", Event_PlayerTeam);
 
     hPlayerRws = CreateTrie();
     hSortedClients = CreateArray();
@@ -185,6 +187,7 @@ public OnPluginStart()
     hSaveAssists = CreateTrie();
     hSaveDeaths = CreateTrie();
     hSaveScore = CreateTrie();
+    hSaveMvps = CreateTrie();
 
     ResetReadyUp();
 }
@@ -219,6 +222,8 @@ public OnPluginEnd()
         CloseHandle(hSaveDeaths);
     if (hSaveScore != INVALID_HANDLE)
         CloseHandle(hSaveScore);
+    if (hSaveMvps != INVALID_HANDLE)
+        CloseHandle(hSaveMvps);
 }
 
 public OnClientAuthorized(client, const String:auth[])
@@ -228,35 +233,55 @@ public OnClientAuthorized(client, const String:auth[])
         return;
     }
 
-    decl String:playerName[64];
+    decl String:playerName[MAX_NAME_LENGTH];
     GetClientName(client, playerName, sizeof(playerName));
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
+    g_playerReady[client] = false;
     FetchPlayerRws(auth);
+}
 
-    decl cash;
-    if (GetTrieValue(hSaveCash, auth, cash))
+ChangeMatchState(MatchState:newState)
+{
+    g_matchState = newState;
+    switch (g_matchState)
     {
-        SetEntProp(client, Prop_Send, "m_iAccount", cash);
-    }
-
-    decl kills;
-    if (GetTrieValue(hSaveKills, auth, kills))
-    {
-        SetEntProp(client, Prop_Send, "m_iKills", kills);
-    }
-
-    decl assists;
-    if (GetTrieValue(hSaveAssists, auth, assists))
-    {
-        new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
-        SetEntData(client, assists_offset, assists);
-    }
-
-    decl deaths;
-    if (GetTrieValue(hSaveDeaths, auth, deaths))
-    {
-        SetEntProp(client, Prop_Send, "m_iDeaths", deaths);
+        case MS_WARMUP:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_WARMUP\"");
+        }
+        case MS_MAP_VOTE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_MAP_VOTE\"");
+        }
+        case MS_PICK_CAPTAINS:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PICK_CAPTAINS\"");
+        }
+        case MS_PICK_TEAMS:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PICK_TEAMS\"");
+        }
+        case MS_PRE_LIVE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_PRE_LIVE\"");
+        }
+        case MS_LIVE:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_LIVE\"");
+        }
+        case MS_OT:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_OT\"");
+        }
+        case MS_HALFTIME:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_HALFTIME\"");
+        }
+        case MS_POST_MATCH:
+        {
+            LogToGame("GoonPUG triggered \"state\" \"MS_POST_MATCH\"");
+        }
     }
 }
 
@@ -322,6 +347,7 @@ public FetchRwsCb(Handle:hCurl, CURLcode:code, any:hPack)
                 new Float:rws = json_object_get_float(hPlayer, "average_rws");
                 SetTrieValue(hPlayerRws, auth, rws);
                 PrintToServer("Got RWS for player %s: %f", auth, rws);
+                PrintToServer("Got RWS for player %s: %f", auth, rws);
             }
             CloseHandle(hJson);
         }
@@ -361,7 +387,7 @@ public OnMapStart()
         }
         case MS_POST_MATCH:
         {
-            g_matchState = MS_WARMUP;
+            ChangeMatchState(MS_WARMUP);
             ServerCommand("exec goonpug_warmup.cfg\n");
             StartReadyUp(true);
         }
@@ -370,6 +396,13 @@ public OnMapStart()
 
 public OnMapEnd()
 {
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && !IsFakeClient(i))
+        {
+            ChangeClientTeam(i, CS_TEAM_SPECTATOR);
+        }
+    }
 }
 
 DoPreLive()
@@ -388,6 +421,7 @@ ClearSaves()
     ClearTrie(hSaveAssists);
     ClearTrie(hSaveDeaths);
     ClearTrie(hSaveScore);
+    ClearTrie(hSaveMvps);
 }
 
 /**
@@ -694,8 +728,14 @@ public Action:Timer_ReadyUp(Handle:timer)
         return Plugin_Stop;
     }
 
+    new neededCount = g_maxPlayers;
+    if (g_matchState == MS_HALFTIME)
+    {
+        neededCount = CountActivePlayers(GP_TEAM_1) + CountActivePlayers(GP_TEAM_2);
+    }
+
     new readyCount = CountReady();
-    if (readyCount == g_maxPlayers)
+    if (readyCount == neededCount)
     {
         OnAllReady();
         return Plugin_Stop;
@@ -706,7 +746,7 @@ public Action:Timer_ReadyUp(Handle:timer)
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
             decl String:msg[1024];
-            Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, g_maxPlayers);
+            Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, neededCount);
 
             if (g_playerReady[i])
                 StrCat(msg, sizeof(msg), "You are ready\n");
@@ -717,9 +757,9 @@ public Action:Timer_ReadyUp(Handle:timer)
             {
                 if (IsValidPlayer(j) && !IsFakeClient(j))
                 {
-                    decl String:name[64];
+                    decl String:name[MAX_NAME_LENGTH];
                     GetClientName(j, name, sizeof(name));
-                    if (!g_playerReady[j])
+                    if (!g_playerReady[j] && GetClientTeam(j) != CS_TEAM_SPECTATOR)
                     {
                         if (first)
                         {
@@ -799,20 +839,20 @@ public Action:Command_Ready(client, args)
     {
         switch (g_matchState)
         {
-            case MS_PRE_LIVE, MS_HALFTIME:
+            case MS_PRE_LIVE:
             {
-                decl String:steamId[STEAMID_LEN];
-                GetClientAuthString(client, steamId, sizeof(steamId));
+                decl String:auth[STEAMID_LEN];
+                GetClientAuthString(client, auth, sizeof(auth));
 
                 new GpTeam:assignedTeam = GP_TEAM_NONE;
-                new index = FindStringInArray(hTeam1, steamId);
+                new index = FindStringInArray(hTeam1, auth);
                 if (index >= 0)
                 {
                     assignedTeam = GP_TEAM_1;
                 }
                 else
                 {
-                    index = FindStringInArray(hTeam2, steamId);
+                    index = FindStringInArray(hTeam2, auth);
                     if (index >= 0)
                     {
                         assignedTeam = GP_TEAM_2;
@@ -825,9 +865,18 @@ public Action:Command_Ready(client, args)
                     return Plugin_Handled;
                 }
             }
+            case MS_HALFTIME:
+            {
+                new team = GetClientTeam(client);
+                if (CS_TEAM_CT != team && CS_TEAM_T != team)
+                {
+                    PrintToChat(client, "[GP] You cannot ready up right now.");
+                    return Plugin_Handled;
+                }
+            }
         }
 
-        decl String:name[64];
+        decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = true;
         PrintToChatAll("[GP] %s is now ready.", name);
@@ -851,16 +900,27 @@ public Action:Command_Unready(client, args)
         return Plugin_Handled;
     }
 
+
     if (!g_playerReady[client])
     {
         PrintToChat(client, "[GP] You are already not ready.");
     }
     else
     {
-        decl String:name[64];
-        GetClientName(client, name, sizeof(name));
-        g_playerReady[client] = false;
-        PrintToChatAll("[GP] %s is no longer ready.", name);
+        switch (g_matchState)
+        {
+            case MS_PICK_CAPTAINS, MS_PICK_TEAMS:
+            {
+                PrintToChat(client, "[GP] You cannot unready right now as it would break team picking.");
+            }
+            default:
+            {
+                decl String:name[MAX_NAME_LENGTH];
+                GetClientName(client, name, sizeof(name));
+                g_playerReady[client] = false;
+                PrintToChatAll("[GP] %s is no longer ready.", name);
+            }
+        }
     }
 
     return Plugin_Handled;
@@ -882,11 +942,11 @@ public Action:Event_PlayerDisconnect(
         return Plugin_Continue;
     }
 
-    decl String:steamId[STEAMID_LEN];
-    GetClientAuthString(client, steamId, sizeof(steamId));
-    decl String:playerName[64];
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+    decl String:playerName[MAX_NAME_LENGTH];
     GetClientName(client, playerName, sizeof(playerName));
-    decl String:reason[64];
+    decl String:reason[MAX_NAME_LENGTH];
     GetEventString(event, "reason", reason, sizeof(reason));
 
     PrintToChatAll("\x01\x0b\x04%s disconnected: %s", playerName, reason);
@@ -895,12 +955,9 @@ public Action:Event_PlayerDisconnect(
     {
         case MS_PICK_CAPTAINS, MS_PICK_TEAMS:
         {
-            g_matchState = MS_PICK_CAPTAINS;
-
             if (g_playerReady[client])
             {
-                if (IsVoteInProgress())
-                    CancelVote();
+                ChangeMatchState(MS_PICK_CAPTAINS);
                 PrintToChatAll("[GP] Will restart picking teams when we have enough players...");
                 StartReadyUp(false);
             }
@@ -909,20 +966,49 @@ public Action:Event_PlayerDisconnect(
         // open a player can just join.
     }
 
-    new cash = GetEntProp(client, Prop_Send, "m_iAccount");
-    SetTrieValue(hSaveCash, steamId, cash);
-
-    new kills = GetEntProp(client, Prop_Send, "m_iKills");
-    SetTrieValue(hSaveKills, steamId, kills);
-
-    new assists_offset = FindDataMapOffs(client, "m_iKills") + 4;
-    new assists = GetEntData(client, assists_offset);
-    SetTrieValue(hSaveAssists, steamId, assists);
-
-    new deaths = GetEntProp(client, Prop_Send, "m_iDeaths");
-    SetTrieValue(hSaveDeaths, steamId, deaths);
-
     g_playerReady[client] = false;
+
+    new cash = GetEntProp(client, Prop_Send, "m_iAccount");
+    SetTrieValue(hSaveCash, auth, cash);
+
+    new kills = GetClientFrags(client);
+    SetTrieValue(hSaveKills, auth, kills);
+
+    new assists = CS_GetClientAssists(client);
+    SetTrieValue(hSaveAssists, auth, assists);
+
+    new deaths = GetClientDeaths(client);
+    SetTrieValue(hSaveDeaths, auth, deaths);
+
+    new score = CS_GetClientContributionScore(client);
+    SetTrieValue(hSaveScore, auth, score);
+
+    new mvps = CS_GetMVPCount(client);
+    SetTrieValue(hSaveMvps, auth, mvps);
+
+    return Plugin_Continue;
+}
+
+public Action:Event_PlayerTeam(
+    Handle:event,
+    const String:name[],
+    bool:dontBroadcast)
+{
+    new userid = GetEventInt(event, "userid");
+    new client = GetClientOfUserId(userid);
+    new oldteam = GetEventInt(event, "oldteam");
+    new team = GetEventInt(event, "team");
+
+    if (client < 1 || IsFakeClient(client))
+    {
+        return Plugin_Continue;
+    }
+
+    // Sanity check this because of auto-join timer stupidity
+    if (oldteam == CS_TEAM_NONE)
+    {
+        FakeClientCommandEx(client, "jointeam \"%d\"", team);
+    }
 
     return Plugin_Continue;
 }
@@ -957,7 +1043,8 @@ OnAllReady()
             new Handle:time = FindConVar("mp_halftime_duration");
             new timeval = GetConVarInt(time);
             PrintToChatAll("[GP] All players ready, resuming match in %d seconds.", timeval);
-            g_matchState = MS_LIVE;
+            ChangeMatchState(MS_LIVE);
+            g_period++;
         }
 #if defined DEBUG
         default:
@@ -973,7 +1060,7 @@ OnAllReady()
  */
 ChooseMatchMap()
 {
-    g_matchState = MS_MAP_VOTE;
+    ChangeMatchState(MS_MAP_VOTE);
     new Handle:menu = BuildMapVoteMenu();
     new clientCount = 0;
     new clients[MAXPLAYERS + 1];
@@ -1161,7 +1248,7 @@ public Action:Timer_MatchInfo(Handle:timer)
 
 ChooseCaptains()
 {
-    g_matchState = MS_PICK_CAPTAINS;
+    ChangeMatchState(MS_PICK_CAPTAINS);
     StartMatchInfoText();
 
     SortPlayersByRws();
@@ -1179,11 +1266,11 @@ ChooseCaptains()
         {
             decl String:auth[STEAMID_LEN];
             GetClientAuthString(client, auth, sizeof(auth));
-            decl String:name[64];
+            decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
             decl Float:rws;
             GetTrieValue(hPlayerRws, auth, rws);
-            decl String:display[64];
+            decl String:display[MAX_NAME_LENGTH * 2];
             Format(display, sizeof(display), "(%.2f) %s", rws, name);
             AddMenuItem(menu, name, display);
             count++;
@@ -1297,33 +1384,55 @@ public Menu_CaptainsVote(Handle:menu, MenuAction:action, param1, param2)
 
 DetermineFirstPick()
 {
-    g_captClients[0] = FindClientByName(g_capt1);
-    g_captClients[1] = FindClientByName(g_capt2);
-    decl String:auth1[STEAMID_LEN];
-    GetClientAuthString(g_captClients[0], auth1, sizeof(auth1));
-    decl String:auth2[STEAMID_LEN];
-    GetClientAuthString(g_captClients[1], auth2, sizeof(auth2));
+    new capt1 = FindClientByName(g_capt1, true);
+    new capt2 = FindClientByName(g_capt2, true);
+
     decl Float:capt1rws;
-    if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
+    if (capt1 < 0)
     {
+        LogError("Got invalid client for captain: %s", g_capt1);
         capt1rws = 0.0;
     }
-    decl Float:capt2rws;
-    if (!GetTrieValue(hPlayerRws, auth2, capt2rws))
+    else
     {
+        decl String:auth1[STEAMID_LEN];
+        GetClientAuthString(capt1, auth1, sizeof(auth1));
+        if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
+        {
+            capt1rws = 0.0;
+        }
+    }
+
+    decl Float:capt2rws;
+    if (capt2 < 0)
+    {
+        LogError("Got invalid client for captain: %s", g_capt2);
         capt2rws = 0.0;
     }
+    else
+    {
+        decl String:auth2[STEAMID_LEN];
+        GetClientAuthString(capt2, auth2, sizeof(auth2));
+        if (!GetTrieValue(hPlayerRws, auth2, capt2rws))
+        {
+            capt2rws = 0.0;
+        }
+    }
+
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt1, capt1rws);
     PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
+    g_captClients[0] = capt1;
+    g_captClients[1] = capt2;
+    LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
+    LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
     if (capt1rws < capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-        g_firstPick = 0;
     }
     else if (capt1rws > capt2rws)
     {
         PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-        g_firstPick = 1;
+        SwapCaptains();
     }
     else
     {
@@ -1331,14 +1440,14 @@ DetermineFirstPick()
         if (rand == 0)
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-            g_firstPick = 0;
         }
         else
         {
             PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
-            g_firstPick = 1;
+            SwapCaptains();
         }
     }
+    g_firstPick = 0;
 
     ChooseSides();
 }
@@ -1350,7 +1459,7 @@ ChooseSides()
     AddMenuItem(menu, "CT", "CT");
     AddMenuItem(menu, "T", "T");
     SetMenuExitButton(menu, false);
-    DisplayMenu(menu, g_captClients[g_firstPick ^ 1], 0);
+    DisplayMenu(menu, g_captClients[1], 0);
 }
 
 /**
@@ -1366,22 +1475,13 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             GetMenuItem(menu, param2, info, sizeof(info));
             if (StrEqual(info, "CT"))
             {
-                // Captain 2 should be team 1
-                if (g_firstPick == 1)
-                {
-                    SwapCaptains();
-                }
+                SwapCaptains();
+                g_firstPick = 1;
             }
-            else
-            {
-                if (g_firstPick == 0)
-                {
-                    SwapCaptains();
-                }
-            }
-            decl String:name[64];
+            decl String:name[MAX_NAME_LENGTH];
             GetClientName(param1, name, sizeof(name));
             PrintToChatAll("[GP] %s will take %s side first.", name, info);
+            LogAction(param1, -1, "\"%L\" chose side \"%s\"", param1, info);
         }
         case MenuAction_End:
         {
@@ -1400,14 +1500,13 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
  */
 SwapCaptains()
 {
-    decl String:tmpname[64];
+    decl String:tmpname[MAX_NAME_LENGTH];
     strcopy(tmpname, sizeof(tmpname), g_capt1);
     strcopy(g_capt1, sizeof(g_capt1), g_capt2);
     strcopy(g_capt2, sizeof(g_capt2), tmpname);
     new tmp = g_captClients[0];
     g_captClients[0] = g_captClients[1];
     g_captClients[1] = tmp;
-    g_firstPick ^= g_firstPick;
 }
 
 /**
@@ -1425,11 +1524,12 @@ FindClientByName(const String:name[], bool:exact=false)
     {
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
-            decl String:clientName[64];
+            decl String:clientName[MAX_NAME_LENGTH];
             GetClientName(i, clientName, sizeof(clientName));
-            if (exact && StrEqual(clientName, name))
+            if (exact)
             {
-                return i;
+                if (StrEqual(clientName, name))
+                    return i;
             }
             else
             {
@@ -1479,13 +1579,40 @@ FindClientByAuthString(const String:auth[])
  */
 PickTeams()
 {
-    g_matchState = MS_PICK_TEAMS;
+    ChangeMatchState(MS_PICK_TEAMS);
     g_period = 0;
-    SetTeamNames(g_capt1, g_capt2);
     ClearTeams();
+    SetTeamNames(g_capt1, g_capt2);
     ForceAllSpec();
     ForcePlayerTeam(g_captClients[0], GP_TEAM_1);
     ForcePlayerTeam(g_captClients[1], GP_TEAM_2);
+
+    ClearArray(hSortedClients);
+    for (new i = 1; i <= MaxClients; i++)
+    {
+        if (!IsValidPlayer(i) || IsFakeClient(i))
+            continue;
+
+        if (i == g_captClients[0] || i == g_captClients[1])
+            continue;
+
+        if (g_playerReady[i])
+        {
+            PushArrayCell(hSortedClients, i);
+        }
+    }
+
+    if (GetArraySize(hSortedClients) != g_maxPlayers - 2)
+    {
+        LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
+        LogError("Dumping pick list:");
+        for (new i = 0; i < GetArraySize(hSortedClients); i++)
+        {
+            LogError("  %d: %d", i, GetArrayCell(hSortedClients, i));
+        }
+    }
+    SortADTArrayCustom(hSortedClients, RwsSortDescending);
+
     if (hTeamPickMenu != INVALID_HANDLE)
     {
         CloseHandle(hTeamPickMenu);
@@ -1527,34 +1654,34 @@ ForcePlayerTeam(client, GpTeam:team, bool:changeTeam=true)
 {
     if (IsValidPlayer(client))
     {
-        decl String:steamId[STEAMID_LEN];
-        GetClientAuthString(client, steamId, sizeof(steamId));
+        decl String:auth[STEAMID_LEN];
+        GetClientAuthString(client, auth, sizeof(auth));
 
         decl index;
         if (team == GP_TEAM_1)
         {
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam2, index);
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index < 0)
-                PushArrayString(hTeam1, steamId);
+                PushArrayString(hTeam1, auth);
         }
         else if (team == GP_TEAM_2)
         {
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index < 0)
-                PushArrayString(hTeam2, steamId);
+                PushArrayString(hTeam2, auth);
         }
         else
         {
-            index = FindStringInArray(hTeam1, steamId);
+            index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, steamId);
+            index = FindStringInArray(hTeam2, auth);
             if (index >= 0)
                 RemoveFromArray(hTeam2, index);
         }
@@ -1606,7 +1733,10 @@ public Action:Timer_PickTeams(Handle:timer)
     static pickCount = 0;
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
+    {
+        LogError("Got invalid state in Timer_PickTeams: %d", g_matchState);
         return Plugin_Stop;
+    }
 
     // If invalid we can start the next pick.
     if (hTeamPickMenu != INVALID_HANDLE)
@@ -1620,7 +1750,7 @@ public Action:Timer_PickTeams(Handle:timer)
         GetCurrentMap(curmap, sizeof(curmap));
         decl String:nextmap[MAX_MAPNAME_LEN];
         GetNextMap(nextmap, sizeof(nextmap));
-        g_matchState = MS_PRE_LIVE;
+        ChangeMatchState(MS_PRE_LIVE);
         if (!StrEqual(nextmap, curmap))
         {
             PrintToChatAll("[GP] Changing map to %s in 10 seconds...", nextmap);
@@ -1633,42 +1763,31 @@ public Action:Timer_PickTeams(Handle:timer)
         }
         return Plugin_Stop;
     }
+
+    if (pickNum == 1)
+    {
+        g_whosePick = g_firstPick;
+        pickCount = 1;
+    }
+
+    if (pickCount == 2)
+    {
+        g_whosePick ^= 1;
+        pickCount = 0;
+    }
+
+    if (g_whosePick == 0)
+    {
+        PrintToChatAll("[GP] %s's pick...", g_capt1);
+    }
     else
     {
-        if (pickNum == 1)
-        {
-            g_whosePick = g_firstPick;
-            ClearArray(hSortedClients);
-            for (new i = 1; i <= MaxClients; i++)
-            {
-                if (IsValidPlayer(i) && GetClientTeam(i) == CS_TEAM_SPECTATOR
-                    && g_playerReady[i])
-                {
-                    PushArrayCell(hSortedClients, i);
-                }
-            }
-            SortADTArrayCustom(hSortedClients, RwsSortDescending);
-            pickCount = 1;
-        }
-        else if (pickCount == 2)
-        {
-            g_whosePick ^= 1;
-            pickCount = 0;
-        }
-
-        if (g_whosePick == 0)
-        {
-            PrintToChatAll("[GP] %s's pick...", g_capt1);
-        }
-        else
-        {
-            PrintToChatAll("[GP] %s's pick...", g_capt2);
-        }
-        hTeamPickMenu = BuildPickMenu();
-        DisplayMenu(hTeamPickMenu, g_captClients[g_whosePick], 0);
-        pickCount++;
-        pickNum++;
+        PrintToChatAll("[GP] %s's pick...", g_capt2);
     }
+    hTeamPickMenu = BuildPickMenu(pickNum);
+    DisplayMenu(hTeamPickMenu, g_captClients[g_whosePick], 0);
+    pickCount++;
+    pickNum++;
 
     return Plugin_Continue;
 }
@@ -1676,20 +1795,30 @@ public Action:Timer_PickTeams(Handle:timer)
 /**
  * Builds a menu with a list of pickable players
  */
-Handle:BuildPickMenu()
+Handle:BuildPickMenu(pickNum)
 {
     new Handle:menu = CreateMenu(Menu_PickPlayer);
+    if (GetArraySize(hSortedClients) != g_maxPlayers - 2 - (pickNum + 1))
+    {
+        LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
+        LogError("Dumping pick list:");
+        for (new i = 0; i < GetArraySize(hSortedClients); i++)
+        {
+            new client = GetArrayCell(hSortedClients, i);
+            LogError("  %d: client %d, ready: %d", i, client, g_playerReady[client]);
+        }
+    }
     for (new i = 0; i < GetArraySize(hSortedClients); i++)
     {
         new client = GetArrayCell(hSortedClients, i);
-        decl String:name[64];
+        decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
         decl String:auth[STEAMID_LEN];
         GetClientAuthString(client, auth, sizeof(auth));
         decl Float:rws;
         if (!GetTrieValue(hPlayerRws, auth, rws))
             rws = 0.0;
-        decl String:display[64];
+        decl String:display[MAX_NAME_LENGTH];
         Format(display, sizeof(display), "(%.2f) %s", rws, name);
         AddMenuItem(menu, name, display);
     }
@@ -1708,18 +1837,20 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
     {
         case MenuAction_Select:
         {
-            decl String:pickName[64];
+            decl String:pickName[MAX_NAME_LENGTH];
             GetMenuItem(menu, param2, pickName, sizeof(pickName));
             new pick = FindClientByName(pickName, true);
 
             if (g_whosePick == 0)
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt1, pickName);
+                LogAction(g_captClients[0], pick, "\"%L\" picked \"%L\"", g_captClients[0], pick);
                 ForcePlayerTeam(pick, GP_TEAM_1);
             }
             else
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt2, pickName);
+                LogAction(g_captClients[1], pick, "\"%L\" picked \"%L\"", g_captClients[1], pick);
                 ForcePlayerTeam(pick, GP_TEAM_2);
             }
 
@@ -1748,31 +1879,99 @@ public Action:Command_Jointeam(client, const String:command[], argc)
     StripQuotes(param);
     new team = StringToInt(param);
 
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
     // Always let players move to spec
     if (team == CS_TEAM_SPECTATOR)
     {
         return Plugin_Continue;
     }
+    else if (team != CS_TEAM_NONE)
+    {
+        decl cash;
+        if (GetTrieValue(hSaveCash, auth, cash))
+        {
+            SetEntProp(client, Prop_Send, "m_iAccount", cash);
+            RemoveFromTrie(hSaveCash, auth);
+        }
 
-    decl String:steamId[STEAMID_LEN];
-    GetClientAuthString(client, steamId, sizeof(steamId));
+        decl kills;
+        if (GetTrieValue(hSaveKills, auth, kills))
+        {
+            SetEntProp(client, Prop_Data, "m_iFrags", kills);
+            RemoveFromTrie(hSaveKills, auth);
+        }
+
+        decl assists;
+        if (GetTrieValue(hSaveAssists, auth, assists))
+        {
+            CS_SetClientAssists(client, assists);
+            RemoveFromTrie(hSaveAssists, auth);
+        }
+
+        decl deaths;
+        if (GetTrieValue(hSaveDeaths, auth, deaths))
+        {
+            SetEntProp(client, Prop_Data, "m_iDeaths", deaths);
+            RemoveFromTrie(hSaveDeaths, auth);
+        }
+
+        decl score;
+        if (GetTrieValue(hSaveScore, auth, score))
+        {
+            CS_SetClientContributionScore(client, score);
+            RemoveFromTrie(hSaveScore, auth);
+        }
+
+        decl mvps;
+        if (GetTrieValue(hSaveMvps, auth, mvps))
+        {
+            CS_SetMVPCount(client, mvps);
+            RemoveFromTrie(hSaveMvps, auth);
+        }
+    }
 
     switch (g_matchState)
     {
-        case MS_PICK_TEAMS, MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
+        case MS_PICK_TEAMS:
         {
-            new period = g_period;
-            if (period == 0)
-                period = 1;
             new GpTeam:assignedTeam = GP_TEAM_NONE;
-            new index = FindStringInArray(hTeam1, steamId);
+            new index = FindStringInArray(hTeam1, auth);
             if (index >= 0)
             {
                 assignedTeam = GP_TEAM_1;
             }
             else
             {
-                index = FindStringInArray(hTeam2, steamId);
+                index = FindStringInArray(hTeam2, auth);
+                if (index >= 0)
+                {
+                    assignedTeam = GP_TEAM_2;
+                }
+            }
+            if (assignedTeam == GP_TEAM_NONE)
+            {
+                PrintToChat(client, "[GP] You cannot join a team until you are picked");
+            }
+            GPChangeClientTeam(client, assignedTeam);
+
+            return Plugin_Handled;
+        }
+        case MS_PRE_LIVE, MS_LIVE, MS_HALFTIME, MS_OT:
+        {
+            new period = g_period;
+            if (period == 0)
+                period = 1;
+            new GpTeam:assignedTeam = GP_TEAM_NONE;
+            new index = FindStringInArray(hTeam1, auth);
+            if (index >= 0)
+            {
+                assignedTeam = GP_TEAM_1;
+            }
+            else
+            {
+                index = FindStringInArray(hTeam2, auth);
                 if (index >= 0)
                 {
                     assignedTeam = GP_TEAM_2;
@@ -1785,6 +1984,7 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                 {
                     PrintToChat(client, "[GP] You are assigned to a team but it is currently full.");
                     PrintToChat(client, "[GP] A substitute player must leave the game or join the spectators before you can rejoin.");
+                    ChangeClientTeam(client, CS_TEAM_SPECTATOR);
                 }
             }
             else
@@ -1795,55 +1995,38 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                     {
                         // Team 1 is CT in odd halfs, T in even
                         if (TryJoinTeam(client, GP_TEAM_1))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_1);
-                            PushArrayString(hTeam1, steamId);
-                        }
-                        else
-                        {
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
+                            assignedTeam = GP_TEAM_1;
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_2))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_2);
-                            PushArrayString(hTeam2, steamId);
-                        }
-                        else
-                        {
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
+                            assignedTeam = GP_TEAM_2;
                     }
                 }
                 else    // team == CS_TEAM_T
                 {
                     if (period % 2)
                     {
-                        // Team 1 is CT in odd halfs, T in even
+                        // Team 2 is T in odd halfs, CT in even
                         if (TryJoinTeam(client, GP_TEAM_2))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_2);
-                            PushArrayString(hTeam2, steamId);
-                        }
-                        else
-                        {
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
+                            assignedTeam = GP_TEAM_2;
                     }
                     else
                     {
                         if (TryJoinTeam(client, GP_TEAM_1))
-                        {
-                            ForcePlayerTeam(client, GP_TEAM_1);
-                            PushArrayString(hTeam1, steamId);
-                        }
-                        else
-                        {
-                            GPChangeClientTeam(client, GP_TEAM_NONE);
-                        }
+                            assignedTeam = GP_TEAM_1;
                     }
+                }
+
+                if (assignedTeam == GP_TEAM_NONE)
+                {
+                    if (team == CS_TEAM_CT)
+                        PrintToChat(client, "[GP] The CT team is current full.");
+                    else if (team == CS_TEAM_T)
+                        PrintToChat(client, "[GP] The T team is current full.");
+                    else
+                        PrintToChat(client, "[GP] You cannot auto-assign right now.");
+                    GPChangeClientTeam(client, assignedTeam);
                 }
             }
 
@@ -1856,24 +2039,33 @@ public Action:Command_Jointeam(client, const String:command[], argc)
 
 CountActivePlayers(GpTeam:team)
 {
-    decl Handle:hTeam;
+    new period = g_period;
+    if (period == 0)
+        period = 1;
+
+    new csTeam = CS_TEAM_SPECTATOR;
     if (team == GP_TEAM_1)
-        hTeam = hTeam1;
+    {
+        if (period % 2)
+            csTeam = CS_TEAM_CT;
+        else
+            csTeam = CS_TEAM_T;
+    }
     else if (team == GP_TEAM_2)
-        hTeam = hTeam2;
+    {
+        if (period % 2)
+            csTeam = CS_TEAM_T;
+        else
+            csTeam = CS_TEAM_CT;
+    }
     else
         return 0;
 
     new count = 0;
-    for (new i = 0; i < GetArraySize(hTeam); i++)
+    for (new i = 1; i <= MaxClients; i++)
     {
-        decl String:auth[STEAMID_LEN];
-        GetArrayString(hTeam, i, auth, sizeof(auth));
-        new client = FindClientByAuthString(auth);
-        if (client > 0 && (GetClientTeam(client) == CS_TEAM_CT || GetClientTeam(client) == CS_TEAM_T))
-        {
+        if (IsValidPlayer(i) && !IsFakeClient(i) && GetClientTeam(i) == csTeam)
             count++;
-        }
     }
 
     return count;
@@ -1882,7 +2074,8 @@ CountActivePlayers(GpTeam:team)
 bool:TryJoinTeam(client, GpTeam:team)
 {
     new count = CountActivePlayers(team);
-    if (count < g_maxPlayers / 2)
+    PrintToServer("[GP] Got %d/%d active players for GP team %d", count, g_maxPlayers / 2, team);
+    if (count < (g_maxPlayers / 2))
     {
         GPChangeClientTeam(client, team);
         return true;
@@ -1901,8 +2094,9 @@ public Action:Timer_ChangeMap(Handle:timer)
 StartLiveMatch()
 {
     StartServerDemo();
-    g_matchState = MS_LIVE;
+    ChangeMatchState(MS_LIVE);
     g_period = 1;
+    ServerCommand("mp_warmup_end\n");
     ServerCommand("exec goonpug_pug.cfg\n");
     PrintToChatAll("[GP] Live after restart!!!");
     ServerCommand("mp_restartgame 10\n");
@@ -2010,20 +2204,22 @@ UploadDemo(const String:filename[])
     new Handle:hForm = curl_httppost();
     decl String:key[PLATFORM_MAX_PATH];
     if (strlen(ip) > 0)
-        Format(key, sizeof(key), "%s/%s", ip, filename);
+        Format(key, sizeof(key), "uploads/gotv/%s/%s", ip, filename);
     else
-        Format(key, sizeof(key), "%s", filename);
+        Format(key, sizeof(key), "uploads/gotv/unknown/%s", filename);
     curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
                  "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "eyJleHBpcmF0aW9uIjogIjIwMTQtMDEtMDFUMDA6MDA6MDBaIiwNCiAgImNvbmRpdGlvbnMiOiBbIA0KICAgIHsiYnVja2V0IjogImdvb25wdWctZGVtb3MifSwgDQogICAgWyJzdGFydHMtd2l0aCIsICIka2V5IiwgIi8iXSwNCiAgICB7ImFjbCI6ICJwdWJsaWMtcmVhZCJ9LA0KICBdDQp9", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "8RrNPLHjNXuCe6k2GGWwAAul3p0=", CURLFORM_END);
+                 "ewogICAgImV4cGlyYXRpb24iOiAiMjAxNC0wMS0wMVQwMDowMDowMFoiLAogICAgImNvbmRpdGlvbnMiOiBbCiAgICAgICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyJ9LAogICAgICAgIFsic3RhcnRzLXdpdGgiLCAiJGtleSIsICJ1cGxvYWRzLyJdLAogICAgICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIn0sCiAgICAgICAgeyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vemlwIn0KICAgIF0KfQ==", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "nh4qMbsylhC3xb+z2ybQ/Yzh4Ks=", CURLFORM_END);
+    curl_formadd(hForm, CURLFORM_COPYNAME, "Content-Type", CURLFORM_COPYCONTENTS, "application/zip", CURLFORM_END);
     curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
     curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
     PrintToServer("[GP] Uploading %s to S3...", filename);
+    LogMessage("[GP] Uploading %s to S3...", filename);
     WritePackCell(hPack, hForm);
     WritePackString(hPack, filename);
     curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
@@ -2031,7 +2227,7 @@ UploadDemo(const String:filename[])
 
 public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
 {
-    CloseHandle(hCurl);
+    new endpos = GetPackPosition(hPack);
     ResetPack(hPack);
     new Handle:hForm = ReadPackCell(hPack);
     CloseHandle(hForm);
@@ -2039,26 +2235,44 @@ public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
     if (CURLE_OK != code) {
         LogError("Curl could not upload demo (%i)", code);
         CloseHandle(hPack);
+        CloseHandle(hCurl);
         return;
     }
+
+    decl httpcode;
+    curl_easy_getinfo_int(hCurl, CURLINFO_RESPONSE_CODE, httpcode);
+    if (httpcode != 204)
+    {
+        LogError("Got unexpected response from AWS: %d", httpcode);
+    }
+    CloseHandle(hCurl);
 
     decl String:filename[PLATFORM_MAX_PATH];
     ReadPackString(hPack, filename, sizeof(filename));
     DeleteFile(filename);
+
+    decl String:receiveStr[CURL_BUFSIZE];
+    strcopy(receiveStr, sizeof(receiveStr), "");
+    while (GetPackPosition(hPack) < endpos)
+    {
+        decl String:buf[CURL_BUFSIZE];
+        ReadPackString(hPack, buf, sizeof(buf));
+        StrCat(receiveStr, sizeof(receiveStr), buf);
+    }
+    LogMessage("Upload demo returned: %s", receiveStr);
 
     CloseHandle(hPack);
 }
 
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
 {
-    ClearSaves();
     if (g_period == 1)
     {
         PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
-        g_matchState = MS_HALFTIME;
+        ChangeMatchState(MS_HALFTIME);
         StartReadyUp(true);
     }
-    else if ((g_period % 2) == 0)
+    else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
     {
         StartOvertimeVote();
     }
@@ -2067,7 +2281,6 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
         new Handle:pause = FindConVar("mp_halftime_pausetimer");
         SetConVarInt(pause, 0);
     }
-    g_period++;
 
     return Plugin_Continue;
 }
@@ -2083,7 +2296,7 @@ public Action:Event_CsWinPanelMatch(Handle:event, const String:name[], bool:dont
 
 PostMatch(bool:abort=false)
 {
-    g_matchState = MS_POST_MATCH;
+    ChangeMatchState(MS_POST_MATCH);
     if (abort)
     {
         StopServerDemo(false);
@@ -2114,7 +2327,7 @@ PostMatch(bool:abort=false)
     else
     {
         PrintToChatAll("[GP] Skipping warmup map change.");
-        g_matchState = MS_WARMUP;
+        ChangeMatchState(MS_WARMUP);
         ServerCommand("exec goonpug_warmup.cfg\n");
         StartReadyUp(true);
     }
@@ -2180,12 +2393,13 @@ public VoteHandler_OvertimeVote(Handle:menu, num_votes, num_clients, const clien
     if (StrEqual(result, "Yes") && winningvotes > required)
     {
         PrintToChatAll("[GP] Vote to play OT wins (%0.f%%).", (winningvotes / float(num_votes) * 100.0));
-        g_matchState = MS_OT;
+        ChangeMatchState(MS_OT);
         new Handle:pause = FindConVar("mp_halftime_pausetimer");
         SetConVarInt(pause, 0);
         new Handle:time = FindConVar("mp_halftime_duration");
         new timeval = GetConVarInt(time);
         PrintToChatAll("[GP] Starting OT in in %d seconds.", timeval);
+        g_period++;
     }
     else
     {
@@ -2258,7 +2472,7 @@ public Action:Command_RestartMatch(client, args)
         {
             PrintToChatAll("[GP] Restarting current match.");
             LogToGame("GoonPUG triggered \"Restart_Match\"");
-            if (g_period % 2)
+            if (g_period % 2 == 0)
             {
                 SwapSides();
             }
