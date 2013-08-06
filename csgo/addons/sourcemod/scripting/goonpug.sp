@@ -96,7 +96,6 @@ new Handle:hSortedClients = INVALID_HANDLE;
 new String:g_capt1[MAX_NAME_LENGTH];
 new String:g_capt2[MAX_NAME_LENGTH];
 new g_captClients[2];
-new g_firstPick = 0;
 new g_period = 0;
 new Handle:hTeamPickMenu = INVALID_HANDLE;
 new g_whosePick = 0;
@@ -1425,29 +1424,20 @@ DetermineFirstPick()
     g_captClients[1] = capt2;
     LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
     LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
-    if (capt1rws < capt2rws)
+    if (capt1rws > capt2rws)
     {
-        PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-    }
-    else if (capt1rws > capt2rws)
-    {
-        PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
         SwapCaptains();
     }
-    else
+    else if (capt1rws == capt2rws)
     {
         new rand = GetURandomInt() % 2;
-        if (rand == 0)
+        if (rand == 1)
         {
-            PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
-        }
-        else
-        {
-            PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt2, g_capt1);
             SwapCaptains();
         }
     }
-    g_firstPick = 0;
+    PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
+    g_whosePick = 0;
 
     ChooseSides();
 }
@@ -1476,7 +1466,7 @@ public Menu_Sides(Handle:menu, MenuAction:action, param1, param2)
             if (StrEqual(info, "CT"))
             {
                 SwapCaptains();
-                g_firstPick = 1;
+                g_whosePick = 1;
             }
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(param1, name, sizeof(name));
@@ -1602,15 +1592,6 @@ PickTeams()
         }
     }
 
-    if (GetArraySize(hSortedClients) != g_maxPlayers - 2)
-    {
-        LogError("Invalid pick array size. Captains = %d, %d", g_captClients[0], g_captClients[1]);
-        LogError("Dumping pick list:");
-        for (new i = 0; i < GetArraySize(hSortedClients); i++)
-        {
-            LogError("  %d: %d", i, GetArrayCell(hSortedClients, i));
-        }
-    }
     SortADTArrayCustom(hSortedClients, RwsSortDescending);
 
     if (hTeamPickMenu != INVALID_HANDLE)
@@ -1730,7 +1711,7 @@ GPChangeClientTeam(client, GpTeam:team)
 public Action:Timer_PickTeams(Handle:timer)
 {
     static pickNum = 1;
-    static pickCount = 0;
+    static pickCount = 1;
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
     {
@@ -1762,12 +1743,6 @@ public Action:Timer_PickTeams(Handle:timer)
             StartReadyUp(true);
         }
         return Plugin_Stop;
-    }
-
-    if (pickNum == 1)
-    {
-        g_whosePick = g_firstPick;
-        pickCount = 1;
     }
 
     if (pickCount == 2)
