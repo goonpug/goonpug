@@ -2068,6 +2068,7 @@ public Action:Timer_ChangeMap(Handle:timer)
 
 StartLiveMatch()
 {
+    LogToGame("GoonPUG triggered \"Start_Match\"");
     StartServerDemo();
     ChangeMatchState(MS_LIVE);
     g_period = 1;
