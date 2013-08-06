@@ -1,4 +1,4 @@
-**Copyright (c) 2013 Peter Rowlands**
+**Copyright (c) 2013 Astroman Technologies LLC**
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as publised by

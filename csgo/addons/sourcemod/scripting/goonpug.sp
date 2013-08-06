@@ -1,4 +1,4 @@
-/* Copyright (c) 2013 Peter Rowlands
+/* Copyright (c) 2013 Astroman Technologies LLC
  *
  * This file is part of GoonPUG.
  *
