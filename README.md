@@ -131,6 +131,6 @@ Demos can be accessed via the goonpug web site.
 
 License
 -------
-GoonPUG is copyright (c) 2013 Peter Rowlands.
+GoonPUG is copyright (c) 2013 Astroman Technologies LLC.
 GoonPUG is distributed under the GNU General Public License version 3.
 See [COPYING.md](https://github.com/goonpug/goonpug/blob/master/COPYING.md) for more information.
