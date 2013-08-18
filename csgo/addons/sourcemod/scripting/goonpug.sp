@@ -90,7 +90,7 @@ new Handle:hWarmupMaps = INVALID_HANDLE;
 
 new bool:g_playerReady[MAXPLAYERS + 1];
 
-new Handle:hPlayerRws = INVALID_HANDLE;
+new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
 new String:g_capt1[MAX_NAME_LENGTH];
@@ -176,7 +176,7 @@ public OnPluginStart()
     HookEvent("player_disconnect", Event_PlayerDisconnect);
     HookEvent("player_team", Event_PlayerTeam);
 
-    hPlayerRws = CreateTrie();
+    hPlayerRating = CreateTrie();
     hSortedClients = CreateArray();
 
     hTeam1 = CreateArray(STEAMID_LEN);
@@ -203,8 +203,8 @@ public OnPluginEnd()
         CloseHandle(hWarmupMapKeys);
     if (hWarmupMaps != INVALID_HANDLE)
         CloseHandle(hWarmupMaps);
-    if (hPlayerRws != INVALID_HANDLE)
-        CloseHandle(hPlayerRws);
+    if (hPlayerRating != INVALID_HANDLE)
+        CloseHandle(hPlayerRating);
     if (hSortedClients != INVALID_HANDLE)
         CloseHandle(hSortedClients);
     if (hTeam1 != INVALID_HANDLE)
@@ -237,7 +237,7 @@ public OnClientAuthorized(client, const String:auth[])
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
     g_playerReady[client] = false;
-    FetchPlayerRws(auth);
+    FetchPlayerRating(auth);
 }
 
 ChangeMatchState(MatchState:newState)
@@ -284,7 +284,7 @@ ChangeMatchState(MatchState:newState)
     }
 }
 
-FetchPlayerRws(const String:auth[])
+FetchPlayerRating(const String:auth[])
 {
     new Handle:hCurl = curl_easy_init();
     if (hCurl == INVALID_HANDLE)
@@ -299,19 +299,15 @@ FetchPlayerRws(const String:auth[])
     };
     curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
 
-    new Handle:headers = curl_slist();
-    curl_slist_append(headers, "Content-Type: application/json");
-    curl_easy_setopt_handle(hCurl, CURLOPT_HTTPHEADER, headers);
     new Handle:hPack = CreateDataPack();
     curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
     decl String:url[256];
-    Format(url, sizeof(url), "http://goonpug.com/api/player?q={\"auth_id\":\"%s\"}", auth);
+    Format(url, sizeof(url), "http://goonpug.herokuapp.com/api/player/%s/?format=json", auth);
     curl_easy_setopt_string(hCurl, CURLOPT_URL, url);
-    curl_easy_perform_thread(hCurl, FetchRwsCb, hPack);
-    CloseHandle(headers);
+    curl_easy_perform_thread(hCurl, FetchRatingCb, hPack);
 }
 
-public FetchRwsCb(Handle:hCurl, CURLcode:code, any:hPack)
+public FetchRatingCb(Handle:hCurl, CURLcode:code, any:hPack)
 {
     CloseHandle(hCurl);
     if (CURLE_OK != code) {
@@ -332,21 +328,16 @@ public FetchRwsCb(Handle:hCurl, CURLcode:code, any:hPack)
         }
         new Handle:hJson = json_load(receiveStr);
         if (hJson == INVALID_HANDLE)
-            LogError("Got invalid RWS json object");
+            LogError("Got invalid player json object");
         else
         {
-            new numResults = json_object_get_int(hJson, "num_results");
             if (numResults > 0)
             {
-                new Handle:hObjects = json_object_get(hJson, "objects");
-                new Handle:hPlayer = json_array_get(hObjects, 0);
-
                 decl String:auth[STEAMID_LEN];
-                json_object_get_string(hPlayer, "auth_id", auth, sizeof(auth));
-                new Float:rws = json_object_get_float(hPlayer, "average_rws");
-                SetTrieValue(hPlayerRws, auth, rws);
-                PrintToServer("Got RWS for player %s: %f", auth, rws);
-                PrintToServer("Got RWS for player %s: %f", auth, rws);
+                json_object_get_string(hJson, "auth_id", auth, sizeof(auth));
+                new Float:rating = json_object_get_float(hJson, "rating");
+                SetTrieValue(hPlayerRating, auth, rating);
+                PrintToServer("Got rating for player %s: %f", auth, rating);
             }
             CloseHandle(hJson);
         }
@@ -360,14 +351,14 @@ public OnMapStart()
 
     ClearSaves();
 
-    // Refresh everyone's average RWS
+    // Refresh everyone's average rating
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && !IsFakeClient(i))
         {
             decl String:auth[STEAMID_LEN];
             GetClientAuthString(i, auth, sizeof(auth));
-            FetchPlayerRws(auth);
+            FetchPlayerRating(auth);
         }
     }
 
@@ -1250,14 +1241,14 @@ ChooseCaptains()
     ChangeMatchState(MS_PICK_CAPTAINS);
     StartMatchInfoText();
 
-    SortPlayersByRws();
+    SortPlayersByRating();
 
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
-    SetMenuTitle(menu, "Vote for captains (RWS in parentheses)");
+    SetMenuTitle(menu, "Vote for captains (Rating in parentheses)");
 
     new count = 0;
     new i = 0;
-    // Get up to 4 highest rws players
+    // Get up to 4 highest rating players
     while (count < 4 && i < GetArraySize(hSortedClients))
     {
         new client = GetArrayCell(hSortedClients, i);
@@ -1267,10 +1258,10 @@ ChooseCaptains()
             GetClientAuthString(client, auth, sizeof(auth));
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
-            decl Float:rws;
-            GetTrieValue(hPlayerRws, auth, rws);
+            decl Float:rating;
+            GetTrieValue(hPlayerRating, auth, rating);
             decl String:display[MAX_NAME_LENGTH * 2];
-            Format(display, sizeof(display), "(%.2f) %s", rws, name);
+            Format(display, sizeof(display), "(%.2f) %s", rating, name);
             AddMenuItem(menu, name, display);
             count++;
         }
@@ -1319,7 +1310,7 @@ ChooseCaptains()
     VoteMenu(menu, clients, clientCount, 30);
 }
 
-SortPlayersByRws()
+SortPlayersByRating()
 {
     ClearArray(hSortedClients);
     for (new i = 1; i <= MaxClients; i++)
@@ -1329,26 +1320,26 @@ SortPlayersByRws()
             PushArrayCell(hSortedClients, i);
         }
     }
-    SortADTArrayCustom(hSortedClients, RwsSortDescending);
+    SortADTArrayCustom(hSortedClients, RatingSortDescending);
 }
 
-public RwsSortDescending(index1, index2, Handle:array, Handle:hndl)
+public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 {
     decl String:auth1[STEAMID_LEN];
     GetClientAuthString(GetArrayCell(array, index1), auth1, sizeof(auth1));
     decl String:auth2[STEAMID_LEN];
     GetClientAuthString(GetArrayCell(array, index2), auth2, sizeof(auth2));
 
-    decl Float:rws1;
-    if (!GetTrieValue(hPlayerRws, auth1, rws1))
-        rws1 = 0.0;
-    decl Float:rws2;
-    if (!GetTrieValue(hPlayerRws, auth2, rws2))
-        rws2 = 0.0;
+    decl Float:rating;
+    if (!GetTrieValue(hPlayerRating, auth1, rating1))
+        rating 1= 0.0;
+    decl Float:rating2;
+    if (!GetTrieValue(hPlayerRating, auth2, rating2))
+        rating2 = 0.0;
 
-    if (rws1 > rws2)
+    if (rating1 > rating2)
         return -1;
-    else if (rws1 == rws2)
+    else if (rating1 == rating2)
         return 0;
     else
         return 1;
@@ -1386,49 +1377,49 @@ DetermineFirstPick()
     new capt1 = FindClientByName(g_capt1, true);
     new capt2 = FindClientByName(g_capt2, true);
 
-    decl Float:capt1rws;
+    decl Float:capt1rating;
     if (capt1 < 0)
     {
         LogError("Got invalid client for captain: %s", g_capt1);
-        capt1rws = 0.0;
+        capt1rating = 0.0;
     }
     else
     {
         decl String:auth1[STEAMID_LEN];
         GetClientAuthString(capt1, auth1, sizeof(auth1));
-        if (!GetTrieValue(hPlayerRws, auth1, capt1rws))
+        if (!GetTrieValue(hPlayerRating, auth1, capt1rating))
         {
-            capt1rws = 0.0;
+            capt1rating = 0.0;
         }
     }
 
-    decl Float:capt2rws;
+    decl Float:capt2rating;
     if (capt2 < 0)
     {
         LogError("Got invalid client for captain: %s", g_capt2);
-        capt2rws = 0.0;
+        capt2rating = 0.0;
     }
     else
     {
         decl String:auth2[STEAMID_LEN];
         GetClientAuthString(capt2, auth2, sizeof(auth2));
-        if (!GetTrieValue(hPlayerRws, auth2, capt2rws))
+        if (!GetTrieValue(hPlayerRating, auth2, capt2rating))
         {
-            capt2rws = 0.0;
+            capt2rating = 0.0;
         }
     }
 
-    PrintToChatAll("[GP] %s's RWS: %.2f", g_capt1, capt1rws);
-    PrintToChatAll("[GP] %s's RWS: %.2f", g_capt2, capt2rws);
+    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt1, capt1rating);
+    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt2, capt2rating);
     g_captClients[0] = capt1;
     g_captClients[1] = capt2;
     LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
     LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
-    if (capt1rws > capt2rws)
+    if (capt1rating > capt2rating)
     {
         SwapCaptains();
     }
-    else if (capt1rws == capt2rws)
+    else if (capt1rating == capt2rating)
     {
         new rand = GetURandomInt() % 2;
         if (rand == 1)
@@ -1592,7 +1583,7 @@ PickTeams()
         }
     }
 
-    SortADTArrayCustom(hSortedClients, RwsSortDescending);
+    SortADTArrayCustom(hSortedClients, RatingSortDescending);
 
     if (hTeamPickMenu != INVALID_HANDLE)
     {
@@ -1790,15 +1781,15 @@ Handle:BuildPickMenu(pickNum)
         GetClientName(client, name, sizeof(name));
         decl String:auth[STEAMID_LEN];
         GetClientAuthString(client, auth, sizeof(auth));
-        decl Float:rws;
-        if (!GetTrieValue(hPlayerRws, auth, rws))
-            rws = 0.0;
+        decl Float:rating;
+        if (!GetTrieValue(hPlayerRating, auth, rating))
+            rating = 0.0;
         decl String:display[MAX_NAME_LENGTH];
-        Format(display, sizeof(display), "(%.2f) %s", rws, name);
+        Format(display, sizeof(display), "(%.2f) %s", rating, name);
         AddMenuItem(menu, name, display);
     }
 
-    SetMenuTitle(menu, "Choose a player (RWS in parentheses)");
+    SetMenuTitle(menu, "Choose a player (GP Skill in parentheses)");
     SetMenuExitButton(menu, false);
     return menu;
 }
