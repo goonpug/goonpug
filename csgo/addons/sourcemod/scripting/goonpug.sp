@@ -331,14 +331,11 @@ public FetchRatingCb(Handle:hCurl, CURLcode:code, any:hPack)
             LogError("Got invalid player json object");
         else
         {
-            if (numResults > 0)
-            {
-                decl String:auth[STEAMID_LEN];
-                json_object_get_string(hJson, "auth_id", auth, sizeof(auth));
-                new Float:rating = json_object_get_float(hJson, "rating");
-                SetTrieValue(hPlayerRating, auth, rating);
-                PrintToServer("Got rating for player %s: %f", auth, rating);
-            }
+            decl String:auth[STEAMID_LEN];
+            json_object_get_string(hJson, "auth_id", auth, sizeof(auth));
+            new Float:rating = json_object_get_float(hJson, "rating");
+            SetTrieValue(hPlayerRating, auth, rating);
+            PrintToServer("Got rating for player %s: %f", auth, rating);
             CloseHandle(hJson);
         }
     }
@@ -1330,9 +1327,9 @@ public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
     decl String:auth2[STEAMID_LEN];
     GetClientAuthString(GetArrayCell(array, index2), auth2, sizeof(auth2));
 
-    decl Float:rating;
+    decl Float:rating1;
     if (!GetTrieValue(hPlayerRating, auth1, rating1))
-        rating 1= 0.0;
+        rating1= 0.0;
     decl Float:rating2;
     if (!GetTrieValue(hPlayerRating, auth2, rating2))
         rating2 = 0.0;
