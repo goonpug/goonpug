@@ -149,11 +149,13 @@ public OnPluginStart()
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
     RegConsoleCmd("sm_hp", Command_Hp, "Return all players current HP.");
-    RegConsoleCmd("sm_unreadylist", Command_UnreadyList, "lists all players who are currently not ready");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
-    RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP, "Locks teams");
+    RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP,
+                "Locks teams");
+    RegAdminCmd("sm_unlive", Command_NotLive, ADMFLAG_CHANGEMAN,
+                "Ends the current live match and sitches to a warmup map");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -1420,7 +1422,16 @@ public Action:Command_Unready(client, args)
 
     return Plugin_Handled;
 }
-
+public Action:Command_NotLive(client, args)
+{
+    if (g_matchState != MS_LIVE)
+    {
+        PrintToChat(client, "[GP] You can't do that right now.");
+        return Plugin_Handled;
+    }
+    PostMatch();
+    return Plugin_Handled;
+}
 /**
  * Initiates forfeit vote
  */
