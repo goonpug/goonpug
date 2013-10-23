@@ -1046,7 +1046,7 @@ StartServerDemo()
         decl String:strs[3][256];
         new numStrs = ExplodeString(map, "/", strs, 3, 256);
         
-        ServerCommand("tv_record %s_%s.dem\n", timestamp, strs[numStrs - 1]);
+        ServerCommand("tv_record %s_%s.dem",  timestamp, strs[numStrs - 1]);
         PrintToChatAll("[GP] Recording server demo: %s_%s.dem",  timestamp, strs[numStrs - 1]);
 }
 
