@@ -1039,8 +1039,8 @@ StartServerDemo()
 {
         ServerCommand("tv_stoprecord\n");
         new time = GetTime();
-        decl String:timestamp[128];
-        FormatTime(timestamp, sizeof(timestamp), time);
+        decl String:timestamp[512];
+        FormatTime(timestamp, sizeof(timestamp), NULL_STRING, time);
         decl String:map[256];
         GetCurrentMap(map, sizeof(map));
         /* Strip workshop prefixes */
