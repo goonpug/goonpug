@@ -95,11 +95,6 @@ new Handle:g_graceTimerTrie = INVALID_HANDLE;
 // Reconnect cash handling
 new Handle:g_cashTrie = INVALID_HANDLE;
 
-/* Vector for all the damage */
-new Handle:hMatchDamage[MAX_ROUNDS]; 
-/* Vector for all the kills */
-new Handle:hMatchKills[MAX_ROUNDS]; 
-
 // Structure for storing players health information
 enum playerHpDataStruct
 {
@@ -154,11 +149,11 @@ public OnPluginStart()
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
     RegConsoleCmd("sm_hp", Command_Hp, "Return all players current HP.");
+    RegConsoleCmd("sm_unreadylist", Command_UnreadyList, "lists all players who are currently not ready");
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
     RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP, "Locks teams");
-    RegAdminCmd("sm_kickunready", Command_KickUnready, ADMFLAG_KICK, "Kicks unready players");
 
     // Hook commands
     AddCommandListener(Command_Jointeam, "jointeam");
@@ -404,10 +399,9 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
             decl winningVotes, totalVotes;
             decl String:mapname[256];
             GetMenuVoteInfo(param2, winningVotes, totalVotes);
-            new Float:percentage = (winningVotes / totalVotes) * 100.0;
             GetMenuItem(menu, param1, mapname, sizeof(mapname));
-            PrintToChatAll("[GP] %s won with %0.f%% of the vote.",
-                mapname, percentage);
+            PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningVotes / float(totalVotes) * 100.0));
+            
             SetMatchMap(mapname);
         }
         case MenuAction_VoteCancel:
@@ -1065,7 +1059,7 @@ StopServerDemo()
  */
 StartLiveMatch()
 {
-    StartServerDemo();
+    //StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
     PrintToChatAll("Live on 3...");
@@ -1535,27 +1529,24 @@ public Action:Command_Hp(client, args)
 /**
  *Kicks one "random" unready player
  **/
-public Action:Command_KickUnready(client, args)
+public Action:Command_UnreadyList(client, args)
 {
     if (!NeedReadyUp())
     {
         PrintToChat(client, "[GP] Nobody still needs to ready up");
         return Plugin_Handled;
     }
+    PrintToChatAll("[GP]Players who need to ready up..");
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsValidPlayer(i) && !g_playerReady[i])
         {
             decl String:name[64];
             GetClientName(i, name, sizeof(name));
-            KickClient(i, "You have been kicked by an admin for being unready.");
-            PrintToChatAll("[GP] %s has been kicked for being unready",
-                           name);
-            return Plugin_Handled;
+            PrintToChatAll("%s", name);
         }
     }
     //This should only happen if no kickable players were found
-    PrintToChat(client, "[GP] No valid unready players were found.");
     return Plugin_Handled;
 }
 
@@ -1649,6 +1640,10 @@ public Action:Command_Say(client, const String:command[], argc)
     if (StrEqual(param, ".ready"))
     {
         return Command_Ready(client, 0);
+    }
+    else if (StrEqual(param, ".unreadylist"))
+    {
+        return Command_UnreadyList(client, 0);
     }
     else if (StrEqual(param, ".hp"))
     {
@@ -1837,8 +1832,6 @@ public Action:Event_PlayerDeath(Handle:event, const String:name[], bool:dontBroa
 public Action:Event_RoundStart(Handle:event, const String:name[], bool:dontBroadcast)
 {
     CurrentRound++;
-    hMatchDamage[CurrentRound] = CreateArray();
-    hMatchKills[CurrentRound] = CreateArray();
     for (new i = 1; i <= MaxClients; i++)
     {
         if (IsClientInGame(i) && IsPlayerAlive(i))
