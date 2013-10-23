@@ -154,7 +154,7 @@ public OnPluginStart()
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
     RegAdminCmd("sm_lockteams", Command_LockTeams, ADMFLAG_CHANGEMAP,
                 "Locks teams");
-    RegAdminCmd("sm_unlive", Command_NotLive, ADMFLAG_CHANGEMAN,
+    RegAdminCmd("sm_unlive", Command_NotLive, ADMFLAG_CHANGEMAP,
                 "Ends the current live match and sitches to a warmup map");
 
     // Hook commands
@@ -352,14 +352,16 @@ bool:NeedReadyUp()
 /**
  * Returns a menu for a map vote
  */
-Handle:BuildMapVoteMenu()
+Handle:BuildMapVoteMenu(choices=6)
 {
     assert(g_pugMapList != INVALID_HANDLE)
 
     new Handle:menu = CreateMenu(Menu_MapVote);
     SetMenuTitle(menu, "Vote for the map to play");
     new Handle:maplist = CloneArray(g_pugMapList);
-    for (new i = GetArraySize(g_pugMapList); i > 0; i--)
+    //for (new i = GetArraySize(g_pugMapList); i > 0; i--)
+    // Limits map choices to 6, as a personal preferencet 
+    for (new i = 0; i <= choices; i++)
     {
         decl String:mapname[256];
         new index = GetRandomInt(0, i - 1);
@@ -1038,7 +1040,7 @@ StartServerDemo()
         ServerCommand("tv_stoprecord\n");
         new time = GetTime();
         decl String:timestamp[128];
-        FormatTime(timestamp, sizeof(timestamp), "%F_%H.%M", time);
+        FormatTime(timestamp, sizeof(timestamp), time);
         decl String:map[256];
         GetCurrentMap(map, sizeof(map));
         /* Strip workshop prefixes */
