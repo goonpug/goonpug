@@ -1,7 +1,6 @@
 de_train
 de_inferno
 de_nuke
-de_dust2
 de_cache
 workshop/123769103/de_mirage_ce
 workshop/126053777/de_cpl_fire_ecg_ve
