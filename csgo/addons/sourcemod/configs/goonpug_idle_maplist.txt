@@ -1,20 +1,12 @@
 workshop/131392115/aim_pistol_arena
 workshop/122443683/aim_map
-workshop/127492857/aim_map_p250
 workshop/126759439/aim_usp_a
 workshop/125621707/aim_deagle7k
 workshop/132283032/aim_ak-colt
 workshop/127178918/aim_redline
+workshop/122404013/fy_iceworld
+workshop/122521875/fy_pool_day
+workshop/130275173/scoutzknivez_frz
+workshop/126093916/awp_map_classic
+workshop/126093916/awp_map_classic
 
-workshop/123769103/de_mirage_ce
-workshop/125498553/de_nuke_se
-workshop/126053777/de_cpl_fire_ecg_ve
-workshop/125499116/de_inferno_se
-workshop/125488374/de_dust2_se
-workshop/144923022/de_contra_b2
-workshop/126632649/de_conduit_7
-workshop/125689191/de_season
-workshop/125780134/de_frost_se
-workshop/144165516/de_mill_ce
-workshop/125498231/de_train_se
-workshop/171336276/de_train_ve
