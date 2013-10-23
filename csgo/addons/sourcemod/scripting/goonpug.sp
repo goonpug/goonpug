@@ -1039,7 +1039,7 @@ StartServerDemo()
 {
         ServerCommand("tv_stoprecord\n");
         decl String:timestamp[128];
-        FormatTime(timestamp, sizeof(timestamp), "%H:%M:%S", GetTime());
+        FormatTime(timestamp, sizeof(timestamp), "%F-%H_%M_%S", GetTime());
         decl String:map[256];
         GetCurrentMap(map, sizeof(map));
         /* Strip workshop prefixes */
