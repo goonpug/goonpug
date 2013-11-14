@@ -352,16 +352,14 @@ bool:NeedReadyUp()
 /**
  * Returns a menu for a map vote
  */
-Handle:BuildMapVoteMenu(choices=6)
+Handle:BuildMapVoteMenu()
 {
     assert(g_pugMapList != INVALID_HANDLE)
 
     new Handle:menu = CreateMenu(Menu_MapVote);
     SetMenuTitle(menu, "Vote for the map to play");
     new Handle:maplist = CloneArray(g_pugMapList);
-    //for (new i = GetArraySize(g_pugMapList); i > 0; i--)
-    // Limits map choices to 6, as a personal preferencet 
-    for (new i = 0; i <= choices; i++)
+    for (new i = GetArraySize(g_pugMapList); i > 0; i--)
     {
         decl String:mapname[256];
         new index = GetRandomInt(0, i - 1);
