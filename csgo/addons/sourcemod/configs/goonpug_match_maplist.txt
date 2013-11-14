@@ -2,12 +2,12 @@ de_train
 de_inferno
 de_nuke
 de_cache
+de_dust2
 workshop/123769103/de_mirage_ce
-workshop/126053777/de_cpl_fire_ecg_ve
-workshop/125488374/de_dust2_se
 workshop/144923022/de_contra_b2
 workshop/126632649/de_conduit_7
 workshop/125689191/de_season
 workshop/125780134/de_frost_se
 workshop/144165516/de_mill_ce
-workshop/171336276/de_train_ve
+workshop/160352757/de_forge_go
+workshop/136876244/de_substation
