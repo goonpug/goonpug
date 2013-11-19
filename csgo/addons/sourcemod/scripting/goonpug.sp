@@ -1060,7 +1060,7 @@ StopServerDemo()
  */
 StartLiveMatch()
 {
-    StartServerDemo();
+    //StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
     PrintToChatAll("Live on 3...");
