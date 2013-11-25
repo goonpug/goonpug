@@ -372,6 +372,7 @@ Handle:BuildMapVoteMenu()
     }
     CloseHandle(maplist);
     SetMenuExitButton(menu, false);
+    SetVoteResultCallback(menu, VoteHandler_MapVote);
 
     return menu;
 }
@@ -386,25 +387,6 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
         case MenuAction_End:
         {
             CloseHandle(menu);
-            if (param1 == MenuEnd_VotingCancelled && param2 != VoteCancel_NoVotes)
-            {
-                RestartWarmup();
-            }
-            else
-            {
-                StartMatchInfoText();
-                ChooseCaptains();
-            }
-        }
-        case MenuAction_VoteEnd:
-        {
-            decl winningVotes, totalVotes;
-            decl String:mapname[256];
-            GetMenuVoteInfo(param2, winningVotes, totalVotes);
-            GetMenuItem(menu, param1, mapname, sizeof(mapname));
-            PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningVotes / float(totalVotes) * 100.0));
-            
-            SetMatchMap(mapname);
         }
         case MenuAction_VoteCancel:
         {
@@ -417,11 +399,55 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                 PrintToChatAll("[GP] No votes received, using random map: %s.",
                                mapname);
                 SetMatchMap(mapname);
+                ChooseCaptains();
             }
         }
     }
 }
 
+public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_info[][2], num_items, const item_info[][2])
+{
+    new Float:winningvotes = float(item_info[0][VOTEINFO_ITEM_VOTES]);
+    new Float:required = float(num_votes) * 0.5;
+
+    if (winningvotes < required)
+    {
+        /* runoff mapvote */
+        new Handle:newmenu = CreateMenu(Menu_MapVote);
+        SetMenuTitle(newmenu, "Runoff map vote");
+        SetMenuExitButton(menu, false);
+        SetVoteResultCallback(newmenu, VoteHandler_MapVote);
+
+        decl String:mapname[256];
+        decl String:fileid[32];
+        GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
+        AddMenuItem(newmenu, fileid, mapname);
+        GetMenuItem(menu, item_info[1][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
+        AddMenuItem(newmenu, fileid, mapname);
+
+        new clientCount = 0;
+        new clients[MAXPLAYERS + 1];
+
+        for (new i = 1; i <= MaxClients; i++)
+        {
+            if (g_playerReady[i])
+            {
+                clients[clientCount] = i;
+                clientCount ++;
+            }
+        }
+        VoteMenu(newmenu, clients, clientCount, 30);
+    }
+    else
+    {
+        decl String:mapname[256];
+        decl String:fileid[32];
+        GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
+        PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningvotes / float(num_votes) & 100.0));
+        SetMatchMap(mapname);
+        ChooseCaptains();
+    }
+}
 /**
  * Sets the global match map
  */
