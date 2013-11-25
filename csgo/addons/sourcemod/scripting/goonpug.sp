@@ -443,7 +443,7 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
         decl String:mapname[256];
         decl String:fileid[32];
         GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
-        PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningvotes / float(num_votes) & 100.0));
+        PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningvotes / float(num_votes) * 100.0));
         SetMatchMap(mapname);
         ChooseCaptains();
     }
