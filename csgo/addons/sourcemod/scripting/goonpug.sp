@@ -38,6 +38,7 @@
 #include <sdktools>
 #include <sdktools_functions>
 
+
 #define GOONPUG_VERSION "0.0.5"
 #define MAX_ROUNDS 128
 #define STEAMID_LEN 32
@@ -149,6 +150,7 @@ public OnPluginStart()
     RegConsoleCmd("sm_forfeit", Command_Forfeit, "Initializes a forfeit vote.");
     RegConsoleCmd("sm_restart", Command_Restart, "Start a vote to restart a match.");
     RegConsoleCmd("sm_hp", Command_Hp, "Return all players current HP.");
+    RegConsoleCmd("statspug", Command_StatsPug);
     RegAdminCmd("sm_lo3", Command_Lo3, ADMFLAG_CHANGEMAP, "Starts a live match lo3");
     RegAdminCmd("sm_warmup", Command_Warmup, ADMFLAG_CHANGEMAP, "Starts a warmup");
     RegAdminCmd("sm_unlockteams", Command_UnlockTeams, ADMFLAG_CHANGEMAP, "Unlocks teams");
@@ -1086,7 +1088,7 @@ StopServerDemo()
  */
 StartLiveMatch()
 {
-    //StartServerDemo();
+    StartServerDemo();
     ChangeMatchState(MS_LO3);
     ServerCommand("exec goonpug_match.cfg\n");
     PrintToChatAll("Live on 3...");
@@ -1454,6 +1456,12 @@ public Action:Command_NotLive(client, args)
     PostMatch();
     return Plugin_Handled;
 }
+
+public Action:Command_StatsPug(client, args)
+{
+    ShowMOTDPanel(client, "Title", "http://dl.dropboxusercontent.com/u/13118808/test.html", MOTDPANEL_TYPE_URL);
+    return Plugin_Handled;
+}
 /**
  * Initiates forfeit vote
  */
@@ -1677,6 +1685,10 @@ public Action:Command_Say(client, const String:command[], argc)
     else if (StrEqual(param, ".unreadylist"))
     {
         return Command_UnreadyList(client, 0);
+    }
+    else if (StrEqual(param, ".pug"))
+    {
+        return Command_StatsPug(client, 0);
     }
     else if (StrEqual(param, ".hp"))
     {

@@ -10,6 +10,6 @@ de_season
 de_cache
 de_mill_ce
 de_dust2
-de_conduit_7
-de_tuscan_ce
+de_conduit_8
+de_toscan
 de_substation
