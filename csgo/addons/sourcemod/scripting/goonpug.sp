@@ -1377,7 +1377,7 @@ public Action:Command_Ready(client, args)
                 decl String:name[64];
                 GetClientName(client, name, sizeof(name));
                 g_playerReady[client] = true;
-                PrintToChatAll("[GP] %s has achieved a new level of bushido.", name);
+                PrintToChatAll("[GP] %s is now ready.", name);
             }
             else
             {
@@ -1441,7 +1441,7 @@ public Action:Command_Unready(client, args)
         decl String:name[64];
         GetClientName(client, name, sizeof(name));
         g_playerReady[client] = false;
-        PrintToChatAll("[GP] %s knows only fear.", name);
+        PrintToChatAll("[GP] %s is now not ready.", name);
     }
 
     return Plugin_Handled;
