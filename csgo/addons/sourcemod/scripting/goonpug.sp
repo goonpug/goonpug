@@ -44,6 +44,8 @@
 #include <smjansson>
 #include <zip>
 
+#include <gp_team>
+
 #define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
 #define MAX_CMD_LEN 32
@@ -93,28 +95,14 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
-new String:g_capt1[MAX_NAME_LENGTH];
-new String:g_capt2[MAX_NAME_LENGTH];
-new g_captClients[2];
 new g_period = 0;
 new Handle:hTeamPickMenu = INVALID_HANDLE;
 new g_whosePick = 0;
-
-#define CS_TEAM_CT_FIRST 1
-#define CS_TEAM_T_FIRST 2
-enum GpTeam
-{
-    GP_TEAM_NONE = 0,
-    GP_TEAM_1 = CS_TEAM_CT_FIRST,
-    GP_TEAM_2 = CS_TEAM_T_FIRST,
-};
 
 // demo stuff
 new bool:g_recording = false;
 new String:g_demoname[PLATFORM_MAX_PATH];
 
-new Handle:hTeam1 = INVALID_HANDLE;
-new Handle:hTeam2 = INVALID_HANDLE;
 new Handle:hSaveCash = INVALID_HANDLE;
 new Handle:hSaveKills = INVALID_HANDLE;
 new Handle:hSaveAssists = INVALID_HANDLE;
@@ -179,8 +167,6 @@ public OnPluginStart()
     hPlayerRating = CreateTrie();
     hSortedClients = CreateArray();
 
-    hTeam1 = CreateArray(STEAMID_LEN);
-    hTeam2 = CreateArray(STEAMID_LEN);
     hSaveCash = CreateTrie();
     hSaveKills = CreateTrie();
     hSaveAssists = CreateTrie();
@@ -189,6 +175,8 @@ public OnPluginStart()
     hSaveMvps = CreateTrie();
 
     ResetReadyUp();
+
+    GpTeam_Init();
 }
 
 public OnPluginEnd()
@@ -207,10 +195,6 @@ public OnPluginEnd()
         CloseHandle(hPlayerRating);
     if (hSortedClients != INVALID_HANDLE)
         CloseHandle(hSortedClients);
-    if (hTeam1 != INVALID_HANDLE)
-        CloseHandle(hTeam1);
-    if (hTeam2 != INVALID_HANDLE)
-        CloseHandle(hTeam2 );
     if (hSaveCash != INVALID_HANDLE)
         CloseHandle(hSaveCash);
     if (hSaveKills != INVALID_HANDLE)
@@ -223,6 +207,8 @@ public OnPluginEnd()
         CloseHandle(hSaveScore);
     if (hSaveMvps != INVALID_HANDLE)
         CloseHandle(hSaveMvps);
+
+    GpTeam_Fini();
 }
 
 public OnClientAuthorized(client, const String:auth[])
@@ -1561,9 +1547,9 @@ PickTeams()
     g_period = 0;
     ClearTeams();
     SetTeamNames(g_capt1, g_capt2);
-    ForceAllSpec();
-    ForcePlayerTeam(g_captClients[0], GP_TEAM_1);
-    ForcePlayerTeam(g_captClients[1], GP_TEAM_2);
+    GpTeam_ForceAllSpec();
+    GpTeam_AssignPlayerTeam(g_captClients[0], GP_TEAM_1);
+    GpTeam_AssignPlayerTeam(g_captClients[1], GP_TEAM_2);
 
     ClearArray(hSortedClients);
     for (new i = 1; i <= MaxClients; i++)
@@ -1605,60 +1591,6 @@ ClearTeams()
     ClearArray(hTeam2);
 }
 
-ForceAllSpec()
-{
-    for (new i = 1; i <= MaxClients; i++)
-    {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
-        {
-            ForcePlayerTeam(i, GP_TEAM_NONE);
-        }
-    }
-}
-
-/**
- * Force a player to join the specified team
- */
-ForcePlayerTeam(client, GpTeam:team, bool:changeTeam=true)
-{
-    if (IsValidPlayer(client))
-    {
-        decl String:auth[STEAMID_LEN];
-        GetClientAuthString(client, auth, sizeof(auth));
-
-        decl index;
-        if (team == GP_TEAM_1)
-        {
-            index = FindStringInArray(hTeam2, auth);
-            if (index >= 0)
-                RemoveFromArray(hTeam2, index);
-            index = FindStringInArray(hTeam1, auth);
-            if (index < 0)
-                PushArrayString(hTeam1, auth);
-        }
-        else if (team == GP_TEAM_2)
-        {
-            index = FindStringInArray(hTeam1, auth);
-            if (index >= 0)
-                RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, auth);
-            if (index < 0)
-                PushArrayString(hTeam2, auth);
-        }
-        else
-        {
-            index = FindStringInArray(hTeam1, auth);
-            if (index >= 0)
-                RemoveFromArray(hTeam1, index);
-            index = FindStringInArray(hTeam2, auth);
-            if (index >= 0)
-                RemoveFromArray(hTeam2, index);
-        }
-
-        if (changeTeam)
-            GPChangeClientTeam(client, team);
-    }
-}
 
 GPChangeClientTeam(client, GpTeam:team)
 {
@@ -1808,13 +1740,13 @@ public Menu_PickPlayer(Handle:menu, MenuAction:action, param1, param2)
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt1, pickName);
                 LogAction(g_captClients[0], pick, "\"%L\" picked \"%L\"", g_captClients[0], pick);
-                ForcePlayerTeam(pick, GP_TEAM_1);
+                GpTeam_AssignPlayerTeam(pick, GP_TEAM_1);
             }
             else
             {
                 PrintToChatAll("[GP] %s picks %s.", g_capt2, pickName);
                 LogAction(g_captClients[1], pick, "\"%L\" picked \"%L\"", g_captClients[1], pick);
-                ForcePlayerTeam(pick, GP_TEAM_2);
+                GpTeam_AssignPlayerTeam(pick, GP_TEAM_2);
             }
 
             new index = FindValueInArray(hSortedClients, pick);
@@ -2395,15 +2327,15 @@ LockCurrentTeams()
             {
                 case CS_TEAM_CT:
                 {
-                    ForcePlayerTeam(i, GP_TEAM_1, false);
+                    GpTeam_AssignPlayerTeam(i, GP_TEAM_1, false);
                 }
                 case CS_TEAM_T:
                 {
-                    ForcePlayerTeam(i, GP_TEAM_2, false);
+                    GpTeam_AssignPlayerTeam(i, GP_TEAM_2, false);
                 }
                 default:
                 {
-                    ForcePlayerTeam(i, GP_TEAM_NONE, false);
+                    GpTeam_AssignPlayerTeam(i, GP_TEAM_NONE, false);
                 }
             }
         }
