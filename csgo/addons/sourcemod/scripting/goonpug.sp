@@ -78,8 +78,6 @@ enum MapCollection
     MC_MATCH = 0,
     MC_WARMUP,
 };
-new Handle:hMatchMapCollection = INVALID_HANDLE;
-new Handle:hWarmupMapCollection = INVALID_HANDLE;
 
 // .<cmd> chat command array
 new Handle:hDotCmds = INVALID_HANDLE;
@@ -132,10 +130,6 @@ public OnPluginStart()
     // Set up GoonPUG convars
     CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
             FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_REPLICATED | FCVAR_DONTRECORD);
-    hMatchMapCollection = CreateConVar("gp_match_map_collection", "141468891",
-            "Match map workshop collection ID", FCVAR_PLUGIN | FCVAR_SPONLY);
-    hWarmupMapCollection = CreateConVar("gp_warmup_map_collection", "141469710",
-            "Warmup map workshop collection ID", FCVAR_PLUGIN | FCVAR_SPONLY);
 
     // Register commands
     hDotCmds = CreateArray(MAX_CMD_LEN);
@@ -273,67 +267,9 @@ ChangeMatchState(MatchState:newState)
     }
 }
 
-FetchPlayerRating(const String:auth[])
-{
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
-        return;
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 90},
-        {_:CURLOPT_CONNECTTIMEOUT, 60},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-    decl String:url[256];
-    Format(url, sizeof(url), "http://goonpug.herokuapp.com/api/player/%s/?format=json", auth);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL, url);
-    curl_easy_perform_thread(hCurl, FetchRatingCb, hPack);
-}
-
-public FetchRatingCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    CloseHandle(hCurl);
-    if (CURLE_OK != code) {
-        LogError("Curl could not fetch player info (%i)", code);
-        return;
-    }
-    else
-    {
-        new endpos = GetPackPosition(hPack);
-        ResetPack(hPack);
-        decl String:receiveStr[CURL_BUFSIZE];
-        strcopy(receiveStr, sizeof(receiveStr), "");
-        while (GetPackPosition(hPack) < endpos)
-        {
-            decl String:buf[CURL_BUFSIZE];
-            ReadPackString(hPack, buf, sizeof(buf));
-            StrCat(receiveStr, sizeof(receiveStr), buf);
-        }
-        new Handle:hJson = json_load(receiveStr);
-        if (hJson == INVALID_HANDLE)
-            LogError("Got invalid player json object");
-        else
-        {
-            decl String:auth[STEAMID_LEN];
-            json_object_get_string(hJson, "auth_id", auth, sizeof(auth));
-            new Float:rating = json_object_get_float(hJson, "rating");
-            SetTrieValue(hPlayerRating, auth, rating);
-            PrintToServer("Got rating for player %s: %f", auth, rating);
-            CloseHandle(hJson);
-        }
-    }
-    CloseHandle(hPack);
-}
-
 public OnMapStart()
 {
-    FetchMapCollections();
+    FetchMapLists();
 
     ClearSaves();
 
@@ -435,21 +371,8 @@ RegDotCmd(const String:cmd[], ConCmd:callback, const String:description[]="", fl
 /**
  * Fetch map lists
  */
-FetchMapCollections()
+FetchMapLists()
 {
-    // Read our steam web API key
-    new Handle:hFile = OpenFile("webapi_authkey.txt", "r");
-    if (hFile == INVALID_HANDLE)
-    {
-        LogError("Could not open file webapi_authkey.txt");
-        return;
-    }
-
-    decl String:apikey[33];
-    ReadFileLine(hFile, apikey, sizeof(apikey));
-    TrimString(apikey);
-    CloseHandle(hFile);
-
     if (hMatchMapKeys == INVALID_HANDLE)
         hMatchMapKeys = CreateArray(32);
 
@@ -462,114 +385,69 @@ FetchMapCollections()
     if (hWarmupMaps == INVALID_HANDLE)
         hWarmupMaps = CreateTrie();
 
-    // GetConVarInt doesn't work properly here for some reason
-    decl String:collection[16];
-    GetConVarString(hMatchMapCollection, collection, sizeof(collection));
-    FetchMapCollection(collection, apikey, MC_MATCH);
-    GetConVarString(hWarmupMapCollection, collection, sizeof(collection));
-    FetchMapCollection(collection, apikey, MC_WARMUP);
+    new serial = -1;
+    new Handle:matchMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_match");
+    if (INVALID_HANDLE == matchMapList)
+        ThrowError("Could not read goonpug_match map list");
+
+    new Handle:warmupMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_idle");
+    if (INVALID_HANDLE == warmupMapList)
+        ThrowError("Could not read goonpug_idle map list");
+
+    ParseMapList(matchMapList, MC_MATCH);
+    ParseMapList(warmupMapList, MC_WARMUP);
+
+    CloseHandle(matchMapList);
+    CloseHandle(warmupMapList);
 }
 
-FetchMapCollection(const String:collection[], const String:apikey[], MapCollection:mc)
+ParseMapList(Handle:mapList, MapCollection:mc)
 {
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
+    if (INVALID_HANDLE == mapList)
         return;
 
-    PrintToServer("[GP] Fetching workshop map collection %s", collection);
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 30},
-        {_:CURLOPT_CONNECTTIMEOUT, 30},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-
-    decl String:data[128];
-    Format(data, sizeof(data), "key=%s&collectioncount=1&publishedfileids[0]=%s",
-            apikey, collection);
-    curl_easy_setopt_string(hCurl, CURLOPT_POSTFIELDS, data);
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL,
-            "http://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/");
-    WritePackCell(hPack, mc);
-    curl_easy_perform_thread(hCurl, FetchMapCollectionCb, hPack);
-}
-
-public FetchMapCollectionCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    CloseHandle(hCurl);
-    if (CURLE_OK != code)
+    new localKey = 0;
+    for (new i = 0; i < GetArraySize(mapList); i++)
     {
-        LogError("Curl could not fetch map collectiond");
-        return;
-    }
-    else
-    {
-        PrintToServer("Got collection info.");
-        new endpos = GetPackPosition(hPack);
-        ResetPack(hPack);
-        decl Handle:hKeys;
-        decl Handle:hMaps;
-        new MapCollection:mc = ReadPackCell(hPack);
-        switch (mc)
+        decl String:mapname[MAX_MAPNAME_LEN];
+        GetArrayString(mapList, i, mapname, sizeof(mapname));
+        if (0 == strncmp(mapname, "workshop/", 9))
         {
-            case MC_MATCH:
+            decl String:strs[3][128];
+            ExplodeString(mapname, "/", strs, 3, 128);
+            switch (mc)
             {
-                hKeys = hMatchMapKeys;
-                hMaps = hMatchMaps;
-            }
-            case MC_WARMUP:
-            {
-                hKeys = hWarmupMapKeys;
-                hMaps = hWarmupMaps;
-            }
-            default:
-            {
-                return;
-            }
-        }
-        // We clear the keys array here to handle deleted maps. If the map
-        // remains in the actual trie we don't really care since we only
-        // iterate over the trie using the keys array.
-        ClearArray(hKeys);
-        decl String:receiveStr[CURL_BUFSIZE];
-        strcopy(receiveStr, sizeof(receiveStr), "");
-        while (GetPackPosition(hPack) < endpos)
-        {
-            decl String:buf[CURL_BUFSIZE];
-            ReadPackString(hPack, buf, sizeof(buf));
-            StrCat(receiveStr, sizeof(receiveStr), buf);
-        }
-        new Handle:hJson = json_load(receiveStr);
-        new Handle:hResponse = json_object_get(hJson, "response");
-        new Handle:hDetails = json_object_get(hResponse, "collectiondetails");
-        new Handle:hDetail = json_array_get(hDetails, 0);
-        new Handle:hChildren = json_object_get(hDetail, "children");
-
-        for (new i = 0; i < json_array_size(hChildren); i++)
-        {
-            new Handle:hChild = json_array_get(hChildren, i);
-            new type = json_object_get_int(hChild, "filetype");
-            if (type == 0)
-            {
-                decl String:fileid[16];
-                json_object_get_string(hChild, "publishedfileid", fileid, sizeof(fileid));
-                decl String:map[MAX_MAPNAME_LEN];
-                if (!GetTrieString(hMaps, fileid, map, sizeof(map)))
+                case MC_MATCH:
                 {
-                    PrintToServer("Fetching map info for map %s", fileid);
-                    FetchMapName(fileid, mc);
+                    PushArrayString(hMatchMapKeys, strs[1]);
                 }
-                PushArrayString(hKeys, fileid);
+                case MC_WARMUP:
+                {
+                    PushArrayString(hWarmupMapKeys, strs[1]);
+                }
             }
+            FetchMapName(strs[1], mc);
         }
-        CloseHandle(hJson);
+        else
+        {
+            decl String:fileid[32];
+            Format(fileid, sizeof(fileid), "GP_LOCAL_MAP%d", localKey);
+            switch (mc)
+            {
+                case MC_MATCH:
+                {
+                    PushArrayString(hMatchMapKeys, fileid);
+                    SetTrieString(hMatchMaps, fileid, mapname);
+                }
+                case MC_WARMUP:
+                {
+                    PushArrayString(hWarmupMapKeys, fileid);
+                    SetTrieString(hWarmupMaps, fileid, mapname);
+                }
+            }
+            localKey++;
+        }
     }
-    CloseHandle(hPack);
 }
 
 FetchMapName(const String:fileid[], MapCollection:mc)
@@ -1110,7 +988,14 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                                 mapname);
 
                 decl String:map[MAX_MAPNAME_LEN];
-                Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+                if (0 == strncmp(fileid, "GP_LOCAL_MAP", 12))
+                {
+                    Format(map, sizeof(map), "%s", mapname);
+                }
+                else
+                {
+                    Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+                }
                 GPSetNextMap(map);
                 ChooseCaptains();
             }
