@@ -23,6 +23,7 @@
  * Author: Peter "astroman" Rowlands <peter@pmrowla.com>
  */
 
+#define STEAMID_LEN 32
 
 #define CS_TEAM_CT_FIRST 1
 #define CS_TEAM_T_FIRST 2

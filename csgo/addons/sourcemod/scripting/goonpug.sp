@@ -45,6 +45,7 @@
 #include <zip>
 
 #include <gp_team>
+#include <gp_web>
 
 #define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
@@ -78,8 +79,6 @@ enum MapCollection
     MC_MATCH = 0,
     MC_WARMUP,
 };
-new Handle:hMatchMapCollection = INVALID_HANDLE;
-new Handle:hWarmupMapCollection = INVALID_HANDLE;
 
 // .<cmd> chat command array
 new Handle:hDotCmds = INVALID_HANDLE;
@@ -95,6 +94,10 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
+new Handle:hRestrictCaptainsLimit = INVALID_HANDLE;
+new String:g_capt1[MAX_NAME_LENGTH];
+new String:g_capt2[MAX_NAME_LENGTH];
+new g_captClients[2];
 new g_period = 0;
 new Handle:hTeamPickMenu = INVALID_HANDLE;
 new g_whosePick = 0;
@@ -129,10 +132,10 @@ public OnPluginStart()
     // Set up GoonPUG convars
     CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
             FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_REPLICATED | FCVAR_DONTRECORD);
-    hMatchMapCollection = CreateConVar("gp_match_map_collection", "141468891",
-            "Match map workshop collection ID", FCVAR_PLUGIN | FCVAR_SPONLY);
-    hWarmupMapCollection = CreateConVar("gp_warmup_map_collection", "141469710",
-            "Warmup map workshop collection ID", FCVAR_PLUGIN | FCVAR_SPONLY);
+
+    hRestrictCaptainsLimit = CreateConVar("gp_restrict_captains_limit", "0",
+            "Restricts number of potential captains to the top N players",
+            FCVAR_PLUGIN |FCVAR_SPONLY);
 
     // Register commands
     hDotCmds = CreateArray(MAX_CMD_LEN);
@@ -164,9 +167,6 @@ public OnPluginStart()
     HookEvent("player_disconnect", Event_PlayerDisconnect);
     HookEvent("player_team", Event_PlayerTeam);
 
-    hPlayerRating = CreateTrie();
-    hSortedClients = CreateArray();
-
     hSaveCash = CreateTrie();
     hSaveKills = CreateTrie();
     hSaveAssists = CreateTrie();
@@ -177,6 +177,10 @@ public OnPluginStart()
     ResetReadyUp();
 
     GpTeam_Init();
+    GpWeb_Init();
+
+    hPlayerRating = CreateTrie();
+    hSortedClients = CreateArray();
 }
 
 public OnPluginEnd()
@@ -207,7 +211,10 @@ public OnPluginEnd()
         CloseHandle(hSaveScore);
     if (hSaveMvps != INVALID_HANDLE)
         CloseHandle(hSaveMvps);
+    if (hRestrictCaptainsLimit != INVALID_HANDLE)
+        CloseHandle(hRestrictCaptainsLimit);
 
+    GpWeb_Fini();
     GpTeam_Fini();
 }
 
@@ -223,7 +230,8 @@ public OnClientAuthorized(client, const String:auth[])
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
     g_playerReady[client] = false;
-    FetchPlayerRating(auth);
+    if (GpWeb_Enabled())
+        GpWeb_FetchPlayerRating(auth);
 }
 
 ChangeMatchState(MatchState:newState)
@@ -270,78 +278,23 @@ ChangeMatchState(MatchState:newState)
     }
 }
 
-FetchPlayerRating(const String:auth[])
-{
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
-        return;
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 90},
-        {_:CURLOPT_CONNECTTIMEOUT, 60},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-    decl String:url[256];
-    Format(url, sizeof(url), "http://goonpug.herokuapp.com/api/player/%s/?format=json", auth);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL, url);
-    curl_easy_perform_thread(hCurl, FetchRatingCb, hPack);
-}
-
-public FetchRatingCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    CloseHandle(hCurl);
-    if (CURLE_OK != code) {
-        LogError("Curl could not fetch player info (%i)", code);
-        return;
-    }
-    else
-    {
-        new endpos = GetPackPosition(hPack);
-        ResetPack(hPack);
-        decl String:receiveStr[CURL_BUFSIZE];
-        strcopy(receiveStr, sizeof(receiveStr), "");
-        while (GetPackPosition(hPack) < endpos)
-        {
-            decl String:buf[CURL_BUFSIZE];
-            ReadPackString(hPack, buf, sizeof(buf));
-            StrCat(receiveStr, sizeof(receiveStr), buf);
-        }
-        new Handle:hJson = json_load(receiveStr);
-        if (hJson == INVALID_HANDLE)
-            LogError("Got invalid player json object");
-        else
-        {
-            decl String:auth[STEAMID_LEN];
-            json_object_get_string(hJson, "auth_id", auth, sizeof(auth));
-            new Float:rating = json_object_get_float(hJson, "rating");
-            SetTrieValue(hPlayerRating, auth, rating);
-            PrintToServer("Got rating for player %s: %f", auth, rating);
-            CloseHandle(hJson);
-        }
-    }
-    CloseHandle(hPack);
-}
-
 public OnMapStart()
 {
-    FetchMapCollections();
+    FetchMapLists();
 
     ClearSaves();
 
-    // Refresh everyone's average rating
-    for (new i = 1; i <= MaxClients; i++)
+    if (GpWeb_Enabled())
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        // Refresh everyone's average rating
+        for (new i = 1; i <= MaxClients; i++)
         {
-            decl String:auth[STEAMID_LEN];
-            GetClientAuthString(i, auth, sizeof(auth));
-            FetchPlayerRating(auth);
+            if (IsValidPlayer(i) && !IsFakeClient(i))
+            {
+                decl String:auth[STEAMID_LEN];
+                GetClientAuthString(i, auth, sizeof(auth));
+                GpWeb_FetchPlayerRating(auth);
+            }
         }
     }
 
@@ -432,141 +385,87 @@ RegDotCmd(const String:cmd[], ConCmd:callback, const String:description[]="", fl
 /**
  * Fetch map lists
  */
-FetchMapCollections()
+FetchMapLists()
 {
-    // Read our steam web API key
-    new Handle:hFile = OpenFile("webapi_authkey.txt", "r");
-    if (hFile == INVALID_HANDLE)
-    {
-        LogError("Could not open file webapi_authkey.txt");
-        return;
-    }
-
-    decl String:apikey[33];
-    ReadFileLine(hFile, apikey, sizeof(apikey));
-    TrimString(apikey);
-    CloseHandle(hFile);
-
     if (hMatchMapKeys == INVALID_HANDLE)
         hMatchMapKeys = CreateArray(32);
+    else
+        ClearArray(hMatchMapKeys);
 
     if (hMatchMaps == INVALID_HANDLE)
         hMatchMaps = CreateTrie();
 
     if (hWarmupMapKeys == INVALID_HANDLE)
         hWarmupMapKeys = CreateArray(32);
+    else
+        ClearArray(hWarmupMapKeys);
 
     if (hWarmupMaps == INVALID_HANDLE)
         hWarmupMaps = CreateTrie();
 
-    // GetConVarInt doesn't work properly here for some reason
-    decl String:collection[16];
-    GetConVarString(hMatchMapCollection, collection, sizeof(collection));
-    FetchMapCollection(collection, apikey, MC_MATCH);
-    GetConVarString(hWarmupMapCollection, collection, sizeof(collection));
-    FetchMapCollection(collection, apikey, MC_WARMUP);
+    new serial = -1;
+    new Handle:matchMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_match");
+    if (INVALID_HANDLE == matchMapList)
+        ThrowError("Could not read goonpug_match map list");
+
+    new Handle:warmupMapList = ReadMapList(INVALID_HANDLE, serial, "goonpug_idle");
+    if (INVALID_HANDLE == warmupMapList)
+        ThrowError("Could not read goonpug_idle map list");
+
+    ParseMapList(matchMapList, MC_MATCH);
+    ParseMapList(warmupMapList, MC_WARMUP);
+
+    CloseHandle(matchMapList);
+    CloseHandle(warmupMapList);
 }
 
-FetchMapCollection(const String:collection[], const String:apikey[], MapCollection:mc)
+ParseMapList(Handle:mapList, MapCollection:mc)
 {
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
+    if (INVALID_HANDLE == mapList)
         return;
 
-    PrintToServer("[GP] Fetching workshop map collection %s", collection);
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 30},
-        {_:CURLOPT_CONNECTTIMEOUT, 30},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-
-    decl String:data[128];
-    Format(data, sizeof(data), "key=%s&collectioncount=1&publishedfileids[0]=%s",
-            apikey, collection);
-    curl_easy_setopt_string(hCurl, CURLOPT_POSTFIELDS, data);
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL,
-            "http://api.steampowered.com/ISteamRemoteStorage/GetCollectionDetails/v1/");
-    WritePackCell(hPack, mc);
-    curl_easy_perform_thread(hCurl, FetchMapCollectionCb, hPack);
-}
-
-public FetchMapCollectionCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    CloseHandle(hCurl);
-    if (CURLE_OK != code)
+    new localKey = 0;
+    for (new i = 0; i < GetArraySize(mapList); i++)
     {
-        LogError("Curl could not fetch map collectiond");
-        return;
-    }
-    else
-    {
-        PrintToServer("Got collection info.");
-        new endpos = GetPackPosition(hPack);
-        ResetPack(hPack);
-        decl Handle:hKeys;
-        decl Handle:hMaps;
-        new MapCollection:mc = ReadPackCell(hPack);
-        switch (mc)
+        decl String:mapname[MAX_MAPNAME_LEN];
+        GetArrayString(mapList, i, mapname, sizeof(mapname));
+        if (0 == strncmp(mapname, "workshop/", 9))
         {
-            case MC_MATCH:
+            decl String:strs[3][128];
+            ExplodeString(mapname, "/", strs, 3, 128);
+            switch (mc)
             {
-                hKeys = hMatchMapKeys;
-                hMaps = hMatchMaps;
-            }
-            case MC_WARMUP:
-            {
-                hKeys = hWarmupMapKeys;
-                hMaps = hWarmupMaps;
-            }
-            default:
-            {
-                return;
-            }
-        }
-        // We clear the keys array here to handle deleted maps. If the map
-        // remains in the actual trie we don't really care since we only
-        // iterate over the trie using the keys array.
-        ClearArray(hKeys);
-        decl String:receiveStr[CURL_BUFSIZE];
-        strcopy(receiveStr, sizeof(receiveStr), "");
-        while (GetPackPosition(hPack) < endpos)
-        {
-            decl String:buf[CURL_BUFSIZE];
-            ReadPackString(hPack, buf, sizeof(buf));
-            StrCat(receiveStr, sizeof(receiveStr), buf);
-        }
-        new Handle:hJson = json_load(receiveStr);
-        new Handle:hResponse = json_object_get(hJson, "response");
-        new Handle:hDetails = json_object_get(hResponse, "collectiondetails");
-        new Handle:hDetail = json_array_get(hDetails, 0);
-        new Handle:hChildren = json_object_get(hDetail, "children");
-
-        for (new i = 0; i < json_array_size(hChildren); i++)
-        {
-            new Handle:hChild = json_array_get(hChildren, i);
-            new type = json_object_get_int(hChild, "filetype");
-            if (type == 0)
-            {
-                decl String:fileid[16];
-                json_object_get_string(hChild, "publishedfileid", fileid, sizeof(fileid));
-                decl String:map[MAX_MAPNAME_LEN];
-                if (!GetTrieString(hMaps, fileid, map, sizeof(map)))
+                case MC_MATCH:
                 {
-                    PrintToServer("Fetching map info for map %s", fileid);
-                    FetchMapName(fileid, mc);
+                    PushArrayString(hMatchMapKeys, strs[1]);
                 }
-                PushArrayString(hKeys, fileid);
+                case MC_WARMUP:
+                {
+                    PushArrayString(hWarmupMapKeys, strs[1]);
+                }
             }
+            FetchMapName(strs[1], mc);
         }
-        CloseHandle(hJson);
+        else
+        {
+            decl String:fileid[32];
+            Format(fileid, sizeof(fileid), "GP_LOCAL_MAP%d", localKey);
+            switch (mc)
+            {
+                case MC_MATCH:
+                {
+                    PushArrayString(hMatchMapKeys, fileid);
+                    SetTrieString(hMatchMaps, fileid, mapname);
+                }
+                case MC_WARMUP:
+                {
+                    PushArrayString(hWarmupMapKeys, fileid);
+                    SetTrieString(hWarmupMaps, fileid, mapname);
+                }
+            }
+            localKey++;
+        }
     }
-    CloseHandle(hPack);
 }
 
 FetchMapName(const String:fileid[], MapCollection:mc)
@@ -1107,7 +1006,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                                 mapname);
 
                 decl String:map[MAX_MAPNAME_LEN];
-                Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+                FormatMapName(map, sizeof(map), fileid, mapname);
                 GPSetNextMap(map);
                 ChooseCaptains();
             }
@@ -1155,10 +1054,23 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
         decl String:fileid[32];
         GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
         PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningvotes / float(num_votes) * 100.0));
+
         decl String:map[MAX_MAPNAME_LEN];
-        Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+        FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
         ChooseCaptains();
+    }
+}
+
+FormatMapName(String:map[], size, const String:fileid[], const String:mapname[])
+{
+    if (0 == strncmp(fileid, "GP_LOCAL_MAP", 12))
+    {
+        Format(map, size, "%s", mapname);
+    }
+    else
+    {
+        Format(map, size, "workshop/%s/%s", fileid, mapname);
     }
 }
 
@@ -1227,12 +1139,16 @@ ChooseCaptains()
     SortPlayersByRating();
 
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
-    SetMenuTitle(menu, "Vote for captains (Rating in parentheses)");
+    SetMenuTitle(menu, "Vote for captains");
 
     new count = 0;
     new i = 0;
+    new maxCaptains = GetConVarInt(hRestrictCaptainsLimit);
+    if (maxCaptains < 2 || !GpWeb_Enabled())
+        maxCaptains = 10;
+
     // Get up to 4 highest rating players
-    while (count < 4 && i < GetArraySize(hSortedClients))
+    while (count < maxCaptains && i < GetArraySize(hSortedClients))
     {
         new client = GetArrayCell(hSortedClients, i);
         if (g_playerReady[client])
@@ -1241,10 +1157,17 @@ ChooseCaptains()
             GetClientAuthString(client, auth, sizeof(auth));
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
-            decl Float:rating;
-            GetTrieValue(hPlayerRating, auth, rating);
             decl String:display[MAX_NAME_LENGTH * 2];
-            Format(display, sizeof(display), "(%.2f) %s", rating, name);
+            if (GpWeb_Enabled())
+            {
+                decl Float:rating;
+                GetTrieValue(hPlayerRating, auth, rating);
+                Format(display, sizeof(display), "(%.2f) %s", rating, name);
+            }
+            else
+            {
+                Format(display, sizeof(display), "%s", name);
+            }
             AddMenuItem(menu, name, display);
             count++;
         }
@@ -1303,11 +1226,15 @@ SortPlayersByRating()
             PushArrayCell(hSortedClients, i);
         }
     }
-    SortADTArrayCustom(hSortedClients, RatingSortDescending);
+    if (GpWeb_Enabled())
+        SortADTArrayCustom(hSortedClients, RatingSortDescending);
 }
 
 public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 {
+    if (!GpWeb_Enabled())
+        return 0;
+
     decl String:auth1[STEAMID_LEN];
     GetClientAuthString(GetArrayCell(array, index1), auth1, sizeof(auth1));
     decl String:auth2[STEAMID_LEN];
@@ -1315,7 +1242,7 @@ public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 
     decl Float:rating1;
     if (!GetTrieValue(hPlayerRating, auth1, rating1))
-        rating1= 0.0;
+        rating1 = 0.0;
     decl Float:rating2;
     if (!GetTrieValue(hPlayerRating, auth2, rating2))
         rating2 = 0.0;
@@ -1360,49 +1287,62 @@ DetermineFirstPick()
     new capt1 = FindClientByName(g_capt1, true);
     new capt2 = FindClientByName(g_capt2, true);
 
-    decl Float:capt1rating;
-    if (capt1 < 0)
-    {
-        LogError("Got invalid client for captain: %s", g_capt1);
-        capt1rating = 0.0;
-    }
-    else
-    {
-        decl String:auth1[STEAMID_LEN];
-        GetClientAuthString(capt1, auth1, sizeof(auth1));
-        if (!GetTrieValue(hPlayerRating, auth1, capt1rating))
-        {
-            capt1rating = 0.0;
-        }
-    }
-
-    decl Float:capt2rating;
-    if (capt2 < 0)
-    {
-        LogError("Got invalid client for captain: %s", g_capt2);
-        capt2rating = 0.0;
-    }
-    else
-    {
-        decl String:auth2[STEAMID_LEN];
-        GetClientAuthString(capt2, auth2, sizeof(auth2));
-        if (!GetTrieValue(hPlayerRating, auth2, capt2rating))
-        {
-            capt2rating = 0.0;
-        }
-    }
-
-    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt1, capt1rating);
-    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt2, capt2rating);
     g_captClients[0] = capt1;
     g_captClients[1] = capt2;
     LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
     LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
-    if (capt1rating > capt2rating)
+
+    if (GpWeb_Enabled())
     {
-        SwapCaptains();
+        decl Float:capt1rating;
+        if (capt1 < 0)
+        {
+            LogError("Got invalid client for captain: %s", g_capt1);
+            capt1rating = 0.0;
+        }
+        else
+        {
+            decl String:auth1[STEAMID_LEN];
+            GetClientAuthString(capt1, auth1, sizeof(auth1));
+            if (!GetTrieValue(hPlayerRating, auth1, capt1rating))
+            {
+                capt1rating = 0.0;
+            }
+        }
+
+        decl Float:capt2rating;
+        if (capt2 < 0)
+        {
+            LogError("Got invalid client for captain: %s", g_capt2);
+            capt2rating = 0.0;
+        }
+        else
+        {
+            decl String:auth2[STEAMID_LEN];
+            GetClientAuthString(capt2, auth2, sizeof(auth2));
+            if (!GetTrieValue(hPlayerRating, auth2, capt2rating))
+            {
+                capt2rating = 0.0;
+            }
+        }
+
+        PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt1, capt1rating);
+        PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt2, capt2rating);
+
+        if (capt1rating > capt2rating)
+        {
+            SwapCaptains();
+        }
+        else if (capt1rating == capt2rating)
+        {
+            new rand = GetURandomInt() % 2;
+            if (rand == 1)
+            {
+                SwapCaptains();
+            }
+        }
     }
-    else if (capt1rating == capt2rating)
+    else
     {
         new rand = GetURandomInt() % 2;
         if (rand == 1)
@@ -1410,6 +1350,7 @@ DetermineFirstPick()
             SwapCaptains();
         }
     }
+
     PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
     g_whosePick = 0;
 
@@ -1708,13 +1649,20 @@ Handle:BuildPickMenu(pickNum)
         new client = GetArrayCell(hSortedClients, i);
         decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
-        decl String:auth[STEAMID_LEN];
-        GetClientAuthString(client, auth, sizeof(auth));
-        decl Float:rating;
-        if (!GetTrieValue(hPlayerRating, auth, rating))
-            rating = 0.0;
         decl String:display[MAX_NAME_LENGTH];
-        Format(display, sizeof(display), "(%.2f) %s", rating, name);
+        if (GpWeb_Enabled())
+        {
+            decl String:auth[STEAMID_LEN];
+            GetClientAuthString(client, auth, sizeof(auth));
+            decl Float:rating;
+            if (!GetTrieValue(hPlayerRating, auth, rating))
+                rating = 0.0;
+            Format(display, sizeof(display), "(%.2f) %s", rating, name);
+        }
+        else
+        {
+            Format(display, sizeof(display), "%s", name);
+        }
         AddMenuItem(menu, name, display);
     }
 
@@ -2063,6 +2011,7 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
             {
                 CloseHandle(hZip);
                 LogToGame("Wrote compressed demo %s", zip);
+                DeleteFile(demo);
                 UploadDemo(zip);
             }
         }
@@ -2071,7 +2020,10 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
             LogError("Could not open %s for writing", zip);
         }
     }
-    DeleteFile(demo);
+    else
+    {
+        DeleteFile(demo);
+    }
 }
 
 UploadDemo(const String:filename[])
@@ -2213,7 +2165,7 @@ PostMatch(bool:abort=false)
         decl String:mapname[MAX_MAPNAME_LEN];
         GetTrieString(hWarmupMaps, fileid, mapname, sizeof(mapname));
         decl String:map[MAX_MAPNAME_LEN];
-        Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+        FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
         new Handle:hDelay = FindConVar("tv_delay");
         new Float:delay = float(GetConVarInt(hDelay));
