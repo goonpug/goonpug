@@ -95,6 +95,9 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
+new String:g_capt1[MAX_NAME_LENGTH];
+new String:g_capt2[MAX_NAME_LENGTH];
+new g_captClients[2];
 new g_period = 0;
 new Handle:hTeamPickMenu = INVALID_HANDLE;
 new g_whosePick = 0;
