@@ -439,12 +439,12 @@ ParseMapList(Handle:mapList, MapCollection:mc)
                 case MC_MATCH:
                 {
                     PushArrayString(hMatchMapKeys, strs[1]);
-                    cached = GetTrieString(hMatchMapKeys, strs[1], mapname, sizeof(mapname));
+                    cached = GetTrieString(hMatchMaps, strs[1], mapname, sizeof(mapname));
                 }
                 case MC_WARMUP:
                 {
                     PushArrayString(hWarmupMapKeys, strs[1]);
-                    cached = GetTrieString(hWarmupMapKeys, strs[1], mapname, sizeof(mapname));
+                    cached = GetTrieString(hWarmupMaps, strs[1], mapname, sizeof(mapname));
                 }
             }
             if (!cached)
