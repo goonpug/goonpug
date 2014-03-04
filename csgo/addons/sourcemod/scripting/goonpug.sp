@@ -45,6 +45,7 @@
 #include <zip>
 
 #include <gp_team>
+#include <gp_web>
 
 #define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
@@ -93,6 +94,7 @@ new bool:g_playerReady[MAXPLAYERS + 1];
 new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
 
+new Handle:hRestrictCaptainsLimit = INVALID_HANDLE;
 new String:g_capt1[MAX_NAME_LENGTH];
 new String:g_capt2[MAX_NAME_LENGTH];
 new g_captClients[2];
@@ -131,6 +133,10 @@ public OnPluginStart()
     CreateConVar("sm_goonpug_version", GOONPUG_VERSION, "GoonPUG Plugin Version",
             FCVAR_PLUGIN | FCVAR_SPONLY | FCVAR_REPLICATED | FCVAR_DONTRECORD);
 
+    hRestrictCaptainsLimit = CreateConVar("gp_restrict_captains_limit", "0",
+            "Restricts number of potential captains to the top N players",
+            FCVAR_PLUGIN |FCVAR_SPONLY);
+
     // Register commands
     hDotCmds = CreateArray(MAX_CMD_LEN);
     RegDotCmd("ready", Command_Ready, "Set yourself as ready.");
@@ -161,9 +167,6 @@ public OnPluginStart()
     HookEvent("player_disconnect", Event_PlayerDisconnect);
     HookEvent("player_team", Event_PlayerTeam);
 
-    hPlayerRating = CreateTrie();
-    hSortedClients = CreateArray();
-
     hSaveCash = CreateTrie();
     hSaveKills = CreateTrie();
     hSaveAssists = CreateTrie();
@@ -174,6 +177,13 @@ public OnPluginStart()
     ResetReadyUp();
 
     GpTeam_Init();
+    GpWeb_Init();
+
+    if (GpWeb_Enabled())
+    {
+        hPlayerRating = CreateTrie();
+        hSortedClients = CreateArray();
+    }
 }
 
 public OnPluginEnd()
@@ -204,7 +214,10 @@ public OnPluginEnd()
         CloseHandle(hSaveScore);
     if (hSaveMvps != INVALID_HANDLE)
         CloseHandle(hSaveMvps);
+    if (hRestrictCaptainsLimit != INVALID_HANDLE)
+        CloseHandle(hRestrictCaptainsLimit);
 
+    GpWeb_Fini();
     GpTeam_Fini();
 }
 
@@ -220,7 +233,8 @@ public OnClientAuthorized(client, const String:auth[])
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
     g_playerReady[client] = false;
-    FetchPlayerRating(auth);
+    if (GpWeb_Enabled())
+        GpWeb_FetchPlayerRating(auth);
 }
 
 ChangeMatchState(MatchState:newState)
@@ -273,14 +287,17 @@ public OnMapStart()
 
     ClearSaves();
 
-    // Refresh everyone's average rating
-    for (new i = 1; i <= MaxClients; i++)
+    if (GpWeb_Enabled())
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        // Refresh everyone's average rating
+        for (new i = 1; i <= MaxClients; i++)
         {
-            decl String:auth[STEAMID_LEN];
-            GetClientAuthString(i, auth, sizeof(auth));
-            FetchPlayerRating(auth);
+            if (IsValidPlayer(i) && !IsFakeClient(i))
+            {
+                decl String:auth[STEAMID_LEN];
+                GetClientAuthString(i, auth, sizeof(auth));
+                GpWeb_FetchPlayerRating(auth);
+            }
         }
     }
 
@@ -1115,12 +1132,16 @@ ChooseCaptains()
     SortPlayersByRating();
 
     new Handle:menu = CreateMenu(Menu_CaptainsVote);
-    SetMenuTitle(menu, "Vote for captains (Rating in parentheses)");
+    SetMenuTitle(menu, "Vote for captains");
 
     new count = 0;
     new i = 0;
+    new maxCaptains = GetConVarInt(hRestrictCaptainsLimit);
+    if (maxCaptains < 2 || !GpWeb_Enabled())
+        maxCaptains = 10;
+
     // Get up to 4 highest rating players
-    while (count < 4 && i < GetArraySize(hSortedClients))
+    while (count < maxCaptains && i < GetArraySize(hSortedClients))
     {
         new client = GetArrayCell(hSortedClients, i);
         if (g_playerReady[client])
@@ -1129,10 +1150,17 @@ ChooseCaptains()
             GetClientAuthString(client, auth, sizeof(auth));
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
-            decl Float:rating;
-            GetTrieValue(hPlayerRating, auth, rating);
             decl String:display[MAX_NAME_LENGTH * 2];
-            Format(display, sizeof(display), "(%.2f) %s", rating, name);
+            if (GpWeb_Enabled())
+            {
+                decl Float:rating;
+                GetTrieValue(hPlayerRating, auth, rating);
+                Format(display, sizeof(display), "(%.2f) %s", rating, name);
+            }
+            else
+            {
+                Format(display, sizeof(display), "%s", name);
+            }
             AddMenuItem(menu, name, display);
             count++;
         }
@@ -1191,11 +1219,15 @@ SortPlayersByRating()
             PushArrayCell(hSortedClients, i);
         }
     }
-    SortADTArrayCustom(hSortedClients, RatingSortDescending);
+    if (GpWeb_Enabled())
+        SortADTArrayCustom(hSortedClients, RatingSortDescending);
 }
 
 public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 {
+    if (!GpWeb_Enabled())
+        return 0;
+
     decl String:auth1[STEAMID_LEN];
     GetClientAuthString(GetArrayCell(array, index1), auth1, sizeof(auth1));
     decl String:auth2[STEAMID_LEN];
@@ -1203,7 +1235,7 @@ public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 
     decl Float:rating1;
     if (!GetTrieValue(hPlayerRating, auth1, rating1))
-        rating1= 0.0;
+        rating1 = 0.0;
     decl Float:rating2;
     if (!GetTrieValue(hPlayerRating, auth2, rating2))
         rating2 = 0.0;
@@ -1248,49 +1280,62 @@ DetermineFirstPick()
     new capt1 = FindClientByName(g_capt1, true);
     new capt2 = FindClientByName(g_capt2, true);
 
-    decl Float:capt1rating;
-    if (capt1 < 0)
-    {
-        LogError("Got invalid client for captain: %s", g_capt1);
-        capt1rating = 0.0;
-    }
-    else
-    {
-        decl String:auth1[STEAMID_LEN];
-        GetClientAuthString(capt1, auth1, sizeof(auth1));
-        if (!GetTrieValue(hPlayerRating, auth1, capt1rating))
-        {
-            capt1rating = 0.0;
-        }
-    }
-
-    decl Float:capt2rating;
-    if (capt2 < 0)
-    {
-        LogError("Got invalid client for captain: %s", g_capt2);
-        capt2rating = 0.0;
-    }
-    else
-    {
-        decl String:auth2[STEAMID_LEN];
-        GetClientAuthString(capt2, auth2, sizeof(auth2));
-        if (!GetTrieValue(hPlayerRating, auth2, capt2rating))
-        {
-            capt2rating = 0.0;
-        }
-    }
-
-    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt1, capt1rating);
-    PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt2, capt2rating);
     g_captClients[0] = capt1;
     g_captClients[1] = capt2;
     LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
     LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
-    if (capt1rating > capt2rating)
+
+    if (GpWeb_Enabled())
     {
-        SwapCaptains();
+        decl Float:capt1rating;
+        if (capt1 < 0)
+        {
+            LogError("Got invalid client for captain: %s", g_capt1);
+            capt1rating = 0.0;
+        }
+        else
+        {
+            decl String:auth1[STEAMID_LEN];
+            GetClientAuthString(capt1, auth1, sizeof(auth1));
+            if (!GetTrieValue(hPlayerRating, auth1, capt1rating))
+            {
+                capt1rating = 0.0;
+            }
+        }
+
+        decl Float:capt2rating;
+        if (capt2 < 0)
+        {
+            LogError("Got invalid client for captain: %s", g_capt2);
+            capt2rating = 0.0;
+        }
+        else
+        {
+            decl String:auth2[STEAMID_LEN];
+            GetClientAuthString(capt2, auth2, sizeof(auth2));
+            if (!GetTrieValue(hPlayerRating, auth2, capt2rating))
+            {
+                capt2rating = 0.0;
+            }
+        }
+
+        PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt1, capt1rating);
+        PrintToChatAll("[GP] %s's GP Skill: %.2f", g_capt2, capt2rating);
+
+        if (capt1rating > capt2rating)
+        {
+            SwapCaptains();
+        }
+        else if (capt1rating == capt2rating)
+        {
+            new rand = GetURandomInt() % 2;
+            if (rand == 1)
+            {
+                SwapCaptains();
+            }
+        }
     }
-    else if (capt1rating == capt2rating)
+    else
     {
         new rand = GetURandomInt() % 2;
         if (rand == 1)
@@ -1298,6 +1343,7 @@ DetermineFirstPick()
             SwapCaptains();
         }
     }
+
     PrintToChatAll("[GP] %s will pick first. %s will pick sides", g_capt1, g_capt2);
     g_whosePick = 0;
 
@@ -1596,13 +1642,20 @@ Handle:BuildPickMenu(pickNum)
         new client = GetArrayCell(hSortedClients, i);
         decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
-        decl String:auth[STEAMID_LEN];
-        GetClientAuthString(client, auth, sizeof(auth));
-        decl Float:rating;
-        if (!GetTrieValue(hPlayerRating, auth, rating))
-            rating = 0.0;
         decl String:display[MAX_NAME_LENGTH];
-        Format(display, sizeof(display), "(%.2f) %s", rating, name);
+        if (GpWeb_Enabled())
+        {
+            decl String:auth[STEAMID_LEN];
+            GetClientAuthString(client, auth, sizeof(auth));
+            decl Float:rating;
+            if (!GetTrieValue(hPlayerRating, auth, rating))
+                rating = 0.0;
+            Format(display, sizeof(display), "(%.2f) %s", rating, name);
+        }
+        else
+        {
+            Format(display, sizeof(display), "%s", name);
+        }
         AddMenuItem(menu, name, display);
     }
 
