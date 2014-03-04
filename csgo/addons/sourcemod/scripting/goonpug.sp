@@ -431,6 +431,7 @@ ParseMapList(Handle:mapList, MapCollection:mc)
         GetArrayString(mapList, i, mapname, sizeof(mapname));
         if (0 == strncmp(mapname, "workshop/", 9))
         {
+            new bool:cached = false;
             decl String:strs[3][128];
             ExplodeString(mapname, "/", strs, 3, 128);
             switch (mc)
@@ -438,13 +439,16 @@ ParseMapList(Handle:mapList, MapCollection:mc)
                 case MC_MATCH:
                 {
                     PushArrayString(hMatchMapKeys, strs[1]);
+                    cached = GetTrieString(hMatchMapKeys, strs[1], mapname, sizeof(mapname));
                 }
                 case MC_WARMUP:
                 {
                     PushArrayString(hWarmupMapKeys, strs[1]);
+                    cached = GetTrieString(hWarmupMapKeys, strs[1], mapname, sizeof(mapname));
                 }
             }
-            FetchMapName(strs[1], mc);
+            if (!cached)
+                FetchMapName(strs[1], mc);
         }
         else
         {
