@@ -2004,6 +2004,7 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
             {
                 CloseHandle(hZip);
                 LogToGame("Wrote compressed demo %s", zip);
+                DeleteFile(demo);
                 UploadDemo(zip);
             }
         }
@@ -2012,7 +2013,10 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
             LogError("Could not open %s for writing", zip);
         }
     }
-    DeleteFile(demo);
+    else
+    {
+        DeleteFile(demo);
+    }
 }
 
 UploadDemo(const String:filename[])
