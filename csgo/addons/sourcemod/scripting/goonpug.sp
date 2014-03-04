@@ -179,11 +179,8 @@ public OnPluginStart()
     GpTeam_Init();
     GpWeb_Init();
 
-    if (GpWeb_Enabled())
-    {
-        hPlayerRating = CreateTrie();
-        hSortedClients = CreateArray();
-    }
+    hPlayerRating = CreateTrie();
+    hSortedClients = CreateArray();
 }
 
 public OnPluginEnd()
@@ -392,12 +389,16 @@ FetchMapLists()
 {
     if (hMatchMapKeys == INVALID_HANDLE)
         hMatchMapKeys = CreateArray(32);
+    else
+        ClearArray(hMatchMapKeys);
 
     if (hMatchMaps == INVALID_HANDLE)
         hMatchMaps = CreateTrie();
 
     if (hWarmupMapKeys == INVALID_HANDLE)
         hWarmupMapKeys = CreateArray(32);
+    else
+        ClearArray(hWarmupMapKeys);
 
     if (hWarmupMaps == INVALID_HANDLE)
         hWarmupMaps = CreateTrie();
@@ -1005,14 +1006,7 @@ public Menu_MapVote(Handle:menu, MenuAction:action, param1, param2)
                                 mapname);
 
                 decl String:map[MAX_MAPNAME_LEN];
-                if (0 == strncmp(fileid, "GP_LOCAL_MAP", 12))
-                {
-                    Format(map, sizeof(map), "%s", mapname);
-                }
-                else
-                {
-                    Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
-                }
+                FormatMapName(map, sizeof(map), fileid, mapname);
                 GPSetNextMap(map);
                 ChooseCaptains();
             }
@@ -1060,10 +1054,23 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
         decl String:fileid[32];
         GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], fileid, sizeof(fileid), _, mapname, sizeof(mapname));
         PrintToChatAll("[GP] %s won with %0.f%% of the vote", mapname, (winningvotes / float(num_votes) * 100.0));
+
         decl String:map[MAX_MAPNAME_LEN];
-        Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+        FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
         ChooseCaptains();
+    }
+}
+
+FormatMapName(String:map[], size, const String:fileid[], const String:mapname[])
+{
+    if (0 == strncmp(fileid, "GP_LOCAL_MAP", 12))
+    {
+        Format(map, size, "%s", mapname);
+    }
+    else
+    {
+        Format(map, size, "workshop/%s/%s", fileid, mapname);
     }
 }
 
@@ -2158,7 +2165,7 @@ PostMatch(bool:abort=false)
         decl String:mapname[MAX_MAPNAME_LEN];
         GetTrieString(hWarmupMaps, fileid, mapname, sizeof(mapname));
         decl String:map[MAX_MAPNAME_LEN];
-        Format(map, sizeof(map), "workshop/%s/%s", fileid, mapname);
+        FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
         new Handle:hDelay = FindConVar("tv_delay");
         new Float:delay = float(GetConVarInt(hDelay));
