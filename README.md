@@ -24,7 +24,7 @@ After all players have readied up, the following steps will occur:
 Requirements
 ------------
 
-- [SourceMod 1.5](http://www.sourcemod.net) - Until an official 1.5 build is released, you should use the most 1.5 (stable branch) snapshot
+- [SourceMod 1.5](http://www.sourcemod.net) - Either an official release build or a 1.5 (stable branch) snapshot should work
 - [SM cURL](http://forums.alliedmods.net/showthread.php?t=152216)
 - [SMJansson](http://forums.alliedmods.net/showthread.php?t=184604)
 - [sm-zip](https://github.com/pmrowla/sm-zip)
@@ -36,13 +36,14 @@ In theory everything should also work on Windows servers, but there are no guara
 Plugin Installation
 -------------------
 
-1.  Install SourceMod and the required extensions.
-    Make sure you install both the binaries (`.ext.dll` or `.ext.so`) and include files (`.inc`) for all the extensions.
+1.  Install SourceMod.
+    SourcePawn include files and Linux binaries for the required extensions are already included with GoonPUG.
+    If you are running a windows server you will need to install the extension .dll's on your own.
 2.  Extract the contents of the `goonpug_<version>.zip` file into your csgo server folder.
     Everything is properly organized underneath the standard `csgo/` directory.
-3.  Compile and install the plugin.
-    The plugin has only been tested using the compiler bundled with SM distrubtions, and the web compiler is not supported.
-
+3.  Install the plugin.
+    A 'stable' pre-compiled .smx file is included with the plugin, but this version may not include the latest changes from the git source.
+    If you wish to compile the most recent version of the plugin yourself, please note that it has only been tested using the compiler bundled with SM distrubtions, and the web compiler is not supported.
     ```
     cd csgo/addons/sourcemod/scripting
     ./compile.sh goonpug.sp
@@ -56,13 +57,17 @@ Plugin Installation
 Map Configuration
 -----------------
 
-Map rotations are loaded from the GoonPUG (or user provided) steam workshop map collections.
-By default, the plugin will use the following collections:
-
--   [GoonPUG Match Maps](http://steamcommunity.com/sharedfiles/filedetails/?id=141468891)
--   [GoonPUG Warmup Maps](http://steamcommunity.com/sharedfiles/filedetails/?id=141469710)
-
-Server admins can specify their own map collections to use via cvars (see below).
+Map rotations must be specified using SourceMod map lists.
+Example map lists are included with the plugin.
+Maps specified in `goonpug_idle_maplist.txt` will be used for the idle/warmup rotation, and maps specified in `goonpug_match_maplist.txt` will be used for the match map vote selection.
+If you don't need any special functionality, you can use the example maplists.cfg file as well.
+```
+cd csgo/addons/sourcemod/configs
+cp maplists.cfg.example maplists.cfg
+```
+Please note that workshop maps must be entered as workshop/####/mapname in the maplist files.
+The "mapname" does not have to match the current name of the map .bsp file for workshop maps since they tend to be updated regularly.
+The proper .bsp filename will be fetched via the Steam Workshop API.
 
 
 Plugin Cvars
@@ -70,10 +75,11 @@ Plugin Cvars
 
 GoonPUG cvars can be set or overridden in your `sourcemod.cfg` file.
 
--   `gp_match_map_collection` specifies the workshop map collection file ID to be used for match maps.
-    Defaults to `"141468891"` (the ID for the GoonPUG Match Maps collection).
--   `gp_warmup_map_collection` specifies the workshop map collection file ID to be used for match maps.
-    Defaults to `"141469710"` (the ID for the GoonPUG Warmup Maps collection).
+-   `gp_web_api_enabled` specifies whether or not the plugin should use the goonpug-web stats API.
+    Defaults to `"0"`.
+-   `gp_web_api_url` specifies the URL for the goonpug-web stats API.
+    This has no effect if `gp_web_api_enabled` is set to zero.
+    URLs should be entered with the `/api` suffix (e.g. `http://goonpug.com/api`)
 
 
 Server configs
@@ -118,7 +124,7 @@ Currently, the plugin admin commands do not appear in the `sm_admin` menu.
 Stats
 -----
 
-The GoonPUG plugin will sync players' statistics (including RWS) with the http://goonpug.com/ web server.
+The GoonPUG plugin can optionally sync players' statistics (including RWS) with the goonpug-web backend.
 
 
 Notes
@@ -126,11 +132,10 @@ Notes
 
 GO:TV match demos will be automatically recorded and saved if GO:TV is enabled on the server.
 Upon conclusion of the match, the GO:TV demo will be automatically compressed into a .zip file and uploaded to an Amazon S3 bucket.
-Demos can be accessed via the goonpug web site.
 
 
 License
 -------
-GoonPUG is copyright (c) 2013 Astroman Technologies LLC.
+GoonPUG is copyright (c) 2014 Astroman Technologies LLC.
 GoonPUG is distributed under the GNU General Public License version 3.
 See [COPYING.md](https://github.com/goonpug/goonpug/blob/master/COPYING.md) for more information.
