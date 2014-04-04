@@ -1831,6 +1831,9 @@ public Action:Command_Jointeam(client, const String:command[], argc)
                 {
                     PrintToChat(client, "[GP] You are assigned to a team but it is currently full.");
                     PrintToChat(client, "[GP] A substitute player must leave the game or join the spectators before you can rejoin.");
+
+                    new cash = GetEntProp(client, Prop_Send, "m_iAccount");
+                    SetTrieValue(hSaveCash, auth, cash);
                     ChangeClientTeam(client, CS_TEAM_SPECTATOR);
                 }
             }
