@@ -1953,6 +1953,7 @@ public Action:Timer_ChangeMap(Handle:timer)
 StartLiveMatch()
 {
     LogToGame("GoonPUG triggered \"Start_Match\"");
+    ClearSaves();
     StartServerDemo();
     ChangeMatchState(MS_LIVE);
     g_period = 1;
@@ -2134,6 +2135,8 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
     {
         PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
         ChangeMatchState(MS_HALFTIME);
+
+        ClearTrie(hSaveCash);
         StartReadyUp(true);
     }
     else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
