@@ -1575,12 +1575,18 @@ GPChangeClientTeam(client, GpTeam:team)
 
 public Action:Timer_PickTeams(Handle:timer)
 {
+    // NOTE: don't forget to reset these everywhere we return Plugin_Stop
+    // from this timer
     static pickNum = 1;
     static pickCount = 1;
+
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
     {
         LogError("Got invalid state in Timer_PickTeams: %d", g_matchState);
+
+        pickNum = 1;
+        pickCount = 1;
         return Plugin_Stop;
     }
 
@@ -1607,6 +1613,9 @@ public Action:Timer_PickTeams(Handle:timer)
             ServerCommand("exec goonpug_prelive.cfg\n");
             StartReadyUp(true);
         }
+
+        pickNum = 1;
+        pickCount = 1;
         return Plugin_Stop;
     }
 
