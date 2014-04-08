@@ -2138,7 +2138,10 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
     }
     else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
     {
-        StartOvertimeVote();
+        new Handle:otEnabled = FindConVar("mp_overtime_enable");
+        new ot = GetConVarInt(otEnabled);
+        if (ot != 0)
+            StartOvertimeVote();
     }
     else
     {
@@ -2183,10 +2186,17 @@ PostMatch(bool:abort=false)
         decl String:map[MAX_MAPNAME_LEN];
         FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
+        new Handle:hDisplay = FindConVar("mp_win_panel_display_time");
+        new Float:displayTime = float(GetConVarInt(hDisplay));
         new Handle:hDelay = FindConVar("tv_delay");
         new Float:delay = float(GetConVarInt(hDelay));
-        PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
-        CreateTimer(delay, Timer_ChangeMap);
+        if (delay > displayTime)
+        {
+            PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
+            CreateTimer(delay, Timer_ChangeMap);
+        }
+        else
+            CreateTimer(displayTime, Timer_ChangeMap);
     }
     else
     {
