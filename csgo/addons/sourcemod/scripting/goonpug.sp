@@ -1575,12 +1575,18 @@ GPChangeClientTeam(client, GpTeam:team)
 
 public Action:Timer_PickTeams(Handle:timer)
 {
+    // NOTE: don't forget to reset these everywhere we return Plugin_Stop
+    // from this timer
     static pickNum = 1;
     static pickCount = 1;
+
     // If state was reset abort
     if (g_matchState != MS_PICK_TEAMS)
     {
         LogError("Got invalid state in Timer_PickTeams: %d", g_matchState);
+
+        pickNum = 1;
+        pickCount = 1;
         return Plugin_Stop;
     }
 
@@ -1607,6 +1613,9 @@ public Action:Timer_PickTeams(Handle:timer)
             ServerCommand("exec goonpug_prelive.cfg\n");
             StartReadyUp(true);
         }
+
+        pickNum = 1;
+        pickCount = 1;
         return Plugin_Stop;
     }
 
@@ -1944,6 +1953,7 @@ public Action:Timer_ChangeMap(Handle:timer)
 StartLiveMatch()
 {
     LogToGame("GoonPUG triggered \"Start_Match\"");
+    ClearSaves();
     StartServerDemo();
     ChangeMatchState(MS_LIVE);
     g_period = 1;
@@ -2125,11 +2135,16 @@ public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:don
     {
         PrintToChatAll("[GP] Halftime. Will resume match when all players are ready.");
         ChangeMatchState(MS_HALFTIME);
+
+        ClearTrie(hSaveCash);
         StartReadyUp(true);
     }
     else if ((g_period % 2) == 0 && (GetTeamScore(CS_TEAM_CT) == GetTeamScore(CS_TEAM_T)))
     {
-        StartOvertimeVote();
+        new Handle:otEnabled = FindConVar("mp_overtime_enable");
+        new ot = GetConVarInt(otEnabled);
+        if (ot != 0)
+            StartOvertimeVote();
     }
     else
     {
@@ -2174,10 +2189,17 @@ PostMatch(bool:abort=false)
         decl String:map[MAX_MAPNAME_LEN];
         FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
+        new Handle:hDisplay = FindConVar("mp_win_panel_display_time");
+        new Float:displayTime = float(GetConVarInt(hDisplay));
         new Handle:hDelay = FindConVar("tv_delay");
         new Float:delay = float(GetConVarInt(hDelay));
-        PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
-        CreateTimer(delay, Timer_ChangeMap);
+        if (delay > displayTime)
+        {
+            PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
+            CreateTimer(delay, Timer_ChangeMap);
+        }
+        else
+            CreateTimer(displayTime, Timer_ChangeMap);
     }
     else
     {
