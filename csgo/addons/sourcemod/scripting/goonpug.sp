@@ -2189,17 +2189,18 @@ PostMatch(bool:abort=false)
         decl String:map[MAX_MAPNAME_LEN];
         FormatMapName(map, sizeof(map), fileid, mapname);
         GPSetNextMap(map);
-        new Handle:hDisplay = FindConVar("mp_win_panel_display_time");
-        new Float:displayTime = float(GetConVarInt(hDisplay));
         new Handle:hDelay = FindConVar("tv_delay");
         new Float:delay = float(GetConVarInt(hDelay));
-        if (delay > displayTime)
+        if (delay < 20.0)
         {
-            PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
-            CreateTimer(delay, Timer_ChangeMap);
+            // set to 20 seconds for drops
+            delay = 20.0
         }
         else
-            CreateTimer(displayTime, Timer_ChangeMap);
+        {
+            PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
+        }
+        CreateTimer(delay, Timer_ChangeMap);
     }
     else
     {
