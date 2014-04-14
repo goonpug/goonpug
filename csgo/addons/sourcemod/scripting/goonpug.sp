@@ -113,6 +113,12 @@ new Handle:hSaveDeaths = INVALID_HANDLE;
 new Handle:hSaveScore = INVALID_HANDLE;
 new Handle:hSaveMvps = INVALID_HANDLE;
 
+new Handle:hEnforceRates = INVALID_HANDLE;
+#define MIN_RATE 128000
+#define MIN_CMDRATE 128
+#define MIN_UPDATERATE 128
+#define WARN_INTERP_RATIO 1.0
+
 /**
  * Public plugin info
  */
@@ -136,6 +142,10 @@ public OnPluginStart()
     hRestrictCaptainsLimit = CreateConVar("gp_restrict_captains_limit", "0",
             "Restricts number of potential captains to the top N players",
             FCVAR_PLUGIN |FCVAR_SPONLY);
+
+    hEnforceRates = CreateConVar("gp_enforce_rates", "0",
+            "Enforces client rate cvars",
+            FCVAR_PLUGIN | FCVAR_SPONLY);
 
     // Register commands
     hDotCmds = CreateArray(MAX_CMD_LEN);
@@ -232,6 +242,63 @@ public OnClientAuthorized(client, const String:auth[])
     g_playerReady[client] = false;
     if (GpWeb_Enabled())
         GpWeb_FetchPlayerRating(auth);
+
+    new enforceRates = GetConVarInt(hEnforceRates);
+    if (0 != enforceRates)
+        EnforceRates(client);
+}
+
+EnforceRates(client)
+{
+    decl String:value[256];
+
+    if (GetClientInfo(client, "rate", value, sizeof(value)))
+    {
+        new val = StringToInt(value);
+        if (val < MIN_RATE)
+            KickClient(client, "Invalid client rate, must be set to at least %d", MIN_RATE);
+    }
+    else
+    {
+        LogError("Could not retrieve rate for player %L", client);
+    }
+
+    if (GetClientInfo(client, "cl_cmdrate", value, sizeof(value)))
+    {
+        new val = StringToInt(value);
+        if (val < MIN_CMDRATE)
+            KickClient(client, "Invalid client cl_cmdrate, must be set to at least %d", MIN_CMDRATE);
+    }
+    else
+    {
+        LogError("Could not retrieve cl_cmdrate for player %L", client);
+    }
+
+    if (GetClientInfo(client, "cl_updaterate", value, sizeof(value)))
+    {
+        new Float:val = StringToFloat(value);
+        if (val < MIN_UPDATERATE)
+            KickClient(client, "Invalid client cl_updaterate, must be set to at least %d", MIN_UPDATERATE);
+    }
+    else
+    {
+        LogError("Could not retrieve cl_cmdrate for player %L", client);
+    }
+
+    if (GetClientInfo(client, "cl_interp_ratio", value, sizeof(value)))
+    {
+        new Float:val = StringToFloat(value);
+        if (val != WARN_INTERP_RATIO)
+        {
+            decl String:playerName[MAX_NAME_LENGTH];
+            GetClientName(client, playerName, sizeof(playerName));
+            PrintToChatAll("\x01\x0b\x04%s has nonstandard cl_interp_ratio (%.1f)", playerName, val);
+        }
+    }
+    else
+    {
+        LogError("Could not retrieve cl_interp_ratio for player %L", client);
+    }
 }
 
 ChangeMatchState(MatchState:newState)
@@ -2194,7 +2261,7 @@ PostMatch(bool:abort=false)
         if (delay < 20.0)
         {
             // set to 20 seconds for drops
-            delay = 20.0
+            delay = 20.0;
         }
         else
         {
