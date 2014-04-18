@@ -18,7 +18,7 @@
  * vim: set ts=4 et ft=sourcepawn :
  */
 /**
- * GoonPUG Web API module
+ * GoonPUG TrueSkill module
  *
  * Author: Peter "astroman" Rowlands <peter@pmrowla.com>
  */
@@ -28,7 +28,7 @@ new Handle:hGpSkillConn = INVALID_HANDLE;
 
 GpSkill_Init()
 {
-    hWebApiEnabled = CreateConVar("gp_skill_enabled", "0",
+    hGpSkillEnabled = CreateConVar("gp_skill_enabled", "0",
             "Use GoonPUG trueskill implementation", FCVAR_PLUGIN | FCVAR_SPONLY);
 }
 
