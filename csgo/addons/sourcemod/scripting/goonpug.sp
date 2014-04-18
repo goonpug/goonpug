@@ -1,4 +1,4 @@
-/* Copyright (c) 2013 Astroman Technologies LLC
+/* Copyright (c) 2014 Astroman Technologies LLC
  *
  * This file is part of GoonPUG.
  *
@@ -46,6 +46,7 @@
 
 #include <gp_team>
 #include <gp_web>
+#include <gp_skill>
 
 #define GOONPUG_VERSION "1.0-beta"
 #define MAX_ROUNDS 128
@@ -188,6 +189,7 @@ public OnPluginStart()
 
     GpTeam_Init();
     GpWeb_Init();
+    GpSkill_Init();
 
     hPlayerRating = CreateTrie();
     hSortedClients = CreateArray();
@@ -224,6 +226,7 @@ public OnPluginEnd()
     if (hRestrictCaptainsLimit != INVALID_HANDLE)
         CloseHandle(hRestrictCaptainsLimit);
 
+    GpSkill_Fini();
     GpWeb_Fini();
     GpTeam_Fini();
 }
@@ -242,6 +245,8 @@ public OnClientAuthorized(client, const String:auth[])
     g_playerReady[client] = false;
     if (GpWeb_Enabled())
         GpWeb_FetchPlayerRating(auth);
+    else if (GpSkill_Enabled())
+        GpSkill_FetchPlayerRating(auth);
 
     new enforceRates = GetConVarInt(hEnforceRates);
     if (0 != enforceRates)
@@ -351,7 +356,7 @@ public OnMapStart()
 
     ClearSaves();
 
-    if (GpWeb_Enabled())
+    if (GpWeb_Enabled() || GpSkill_Enabled())
     {
         // Refresh everyone's average rating
         for (new i = 1; i <= MaxClients; i++)
@@ -360,7 +365,10 @@ public OnMapStart()
             {
                 decl String:auth[STEAMID_LEN];
                 GetClientAuthString(i, auth, sizeof(auth));
-                GpWeb_FetchPlayerRating(auth);
+                if (GpWeb_Enabled())
+                    GpWeb_FetchPlayerRating(auth);
+                else
+                    GpSkill_FetchPlayerRating(auth);
             }
         }
     }
@@ -1215,7 +1223,7 @@ ChooseCaptains()
     new count = 0;
     new i = 0;
     new maxCaptains = GetConVarInt(hRestrictCaptainsLimit);
-    if (maxCaptains < 2 || !GpWeb_Enabled())
+    if (maxCaptains < 2 || !(GpWeb_Enabled() || GpSkill_Enabled))
         maxCaptains = 10;
 
     // Get up to 4 highest rating players
@@ -1229,7 +1237,7 @@ ChooseCaptains()
             decl String:name[MAX_NAME_LENGTH];
             GetClientName(client, name, sizeof(name));
             decl String:display[MAX_NAME_LENGTH * 2];
-            if (GpWeb_Enabled())
+            if (GpWeb_Enabled() || GpSkill_Enabled())
             {
                 decl Float:rating;
                 GetTrieValue(hPlayerRating, auth, rating);
@@ -1297,13 +1305,13 @@ SortPlayersByRating()
             PushArrayCell(hSortedClients, i);
         }
     }
-    if (GpWeb_Enabled())
+    if (GpWeb_Enabled() || GpSkill_Enabled)
         SortADTArrayCustom(hSortedClients, RatingSortDescending);
 }
 
 public RatingSortDescending(index1, index2, Handle:array, Handle:hndl)
 {
-    if (!GpWeb_Enabled())
+    if (!(GpWeb_Enabled() || GpSkill_Enabled()))
         return 0;
 
     decl String:auth1[STEAMID_LEN];
@@ -1363,7 +1371,7 @@ DetermineFirstPick()
     LogAction(g_captClients[0], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[0]);
     LogAction(g_captClients[1], -1, "\"%L\" triggered \"GP Captain\"", g_captClients[1]);
 
-    if (GpWeb_Enabled())
+    if (GpWeb_Enabled() || GpSkill_Enabled())
     {
         decl Float:capt1rating;
         if (capt1 < 0)
@@ -1730,7 +1738,7 @@ Handle:BuildPickMenu(pickNum)
         decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
         decl String:display[MAX_NAME_LENGTH];
-        if (GpWeb_Enabled())
+        if (GpWeb_Enabled() || GpSkill_Enabled())
         {
             decl String:auth[STEAMID_LEN];
             GetClientAuthString(client, auth, sizeof(auth));
