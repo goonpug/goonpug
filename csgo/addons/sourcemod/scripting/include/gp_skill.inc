@@ -77,6 +77,8 @@ Float:GpSkill_FetchPlayerRating(const String:auth[])
             new Float:rating = SQL_FetchFloat(hResult, 0);
             new Float:variance = SQL_FetchFloat(hResult, 1);
             conservativeRating = rating - 3.0 * variance;
+            if (conservativeRating < 0.0)
+                conservativeRating = 0.0;
         }
         CloseHandle(hResult);
         return conservativeRating;
