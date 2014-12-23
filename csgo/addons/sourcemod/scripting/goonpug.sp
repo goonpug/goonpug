@@ -2298,7 +2298,7 @@ StartServerDemo()
     /* Strip workshop prefixes */
     decl String:strs[3][256];
     new numStrs = ExplodeString(map, "/", strs, 3, 256);
-    Format(g_demoname, sizeof(g_demoname), "%s_%s", timestamp, strs[numStrs - 1]);
+    Format(g_demoname, sizeof(g_demoname), "demos/%s_%s", timestamp, strs[numStrs - 1]);
     ServerCommand("tv_record %s.dem\n", g_demoname);
     LogToGame("Recording server demo: %s_%s.dem",  timestamp, strs[numStrs - 1]);
     g_recording = true;
@@ -2311,7 +2311,7 @@ StopServerDemo(bool:save=true)
     WritePackCell(hPack, save);
     WritePackString(hPack, g_demoname);
     // Need to wait here for tv_stoprecord to finish
-    CreateTimer(5.0, Timer_CompressDemo, hPack);
+    // CreateTimer(5.0, Timer_CompressDemo, hPack);
     g_recording = false;
 }
 
@@ -2342,11 +2342,10 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
                 CloseHandle(hZip);
                 LogToGame("Wrote compressed demo %s", zip);
                 DeleteFile(demo);
-                UploadDemo(zip);
             }
         }
         else
-        {   
+        {
             LogError("Could not open %s for writing", zip);
         }
     }
@@ -2354,92 +2353,6 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
     {
         DeleteFile(demo);
     }
-}
-
-UploadDemo(const String:filename[])
-{
-    new Handle:netPublicAdr = FindConVar("net_public_adr");
-    decl String:ip[16];
-    GetConVarString(netPublicAdr, ip, sizeof(ip));
-
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
-        return;
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 90},
-        {_:CURLOPT_CONNECTTIMEOUT, 60},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-
-    // TODO: Use web server to manage different api keys for each server we
-    // know about
-    new Handle:hForm = curl_httppost();
-    decl String:key[PLATFORM_MAX_PATH];
-    if (strlen(ip) > 0)
-        Format(key, sizeof(key), "uploads/gotv/%s/%s", ip, filename);
-    else
-        Format(key, sizeof(key), "uploads/gotv/unknown/%s", filename);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
-                 "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "ewogICAgImV4cGlyYXRpb24iOiAiMjAxNC0wMS0wMVQwMDowMDowMFoiLAogICAgImNvbmRpdGlvbnMiOiBbCiAgICAgICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyJ9LAogICAgICAgIFsic3RhcnRzLXdpdGgiLCAiJGtleSIsICJ1cGxvYWRzLyJdLAogICAgICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIn0sCiAgICAgICAgeyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vemlwIn0KICAgIF0KfQ==", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "nh4qMbsylhC3xb+z2ybQ/Yzh4Ks=", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "Content-Type", CURLFORM_COPYCONTENTS, "application/zip", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
-    curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
-    PrintToServer("[GP] Uploading %s to S3...", filename);
-    LogMessage("[GP] Uploading %s to S3...", filename);
-    WritePackCell(hPack, hForm);
-    WritePackString(hPack, filename);
-    curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
-}
-
-public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    new endpos = GetPackPosition(hPack);
-    ResetPack(hPack);
-    new Handle:hForm = ReadPackCell(hPack);
-    CloseHandle(hForm);
-
-    if (CURLE_OK != code) {
-        LogError("Curl could not upload demo (%i)", code);
-        CloseHandle(hPack);
-        CloseHandle(hCurl);
-        return;
-    }
-
-    decl httpcode;
-    curl_easy_getinfo_int(hCurl, CURLINFO_RESPONSE_CODE, httpcode);
-    if (httpcode != 204)
-    {
-        LogError("Got unexpected response from AWS: %d", httpcode);
-    }
-    CloseHandle(hCurl);
-
-    decl String:filename[PLATFORM_MAX_PATH];
-    ReadPackString(hPack, filename, sizeof(filename));
-    DeleteFile(filename);
-
-    decl String:receiveStr[CURL_BUFSIZE];
-    strcopy(receiveStr, sizeof(receiveStr), "");
-    while (GetPackPosition(hPack) < endpos)
-    {
-        decl String:buf[CURL_BUFSIZE];
-        ReadPackString(hPack, buf, sizeof(buf));
-        StrCat(receiveStr, sizeof(receiveStr), buf);
-    }
-    LogMessage("Upload demo returned: %s", receiveStr);
-
-    CloseHandle(hPack);
 }
 
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
