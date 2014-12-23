@@ -358,10 +358,17 @@ public OnClientAuthorized(client, const String:auth[])
         MoveFromWaitingToReady(client);
     }
 
+    new Float:rating = 0.0;
     if (GpWeb_Enabled())
-        GpWeb_FetchPlayerRating(auth);
+    {
+        rating = GpWeb_FetchPlayerRating(auth);
+        SetTrieValue(hPlayerRating, auth, rating);
+    }
     else if (GpSkill_Enabled())
-        GpSkill_FetchPlayerRating(auth);
+    {
+        rating = GpSkill_FetchPlayerRating(auth);
+        SetTrieValue(hPlayerRating, auth, rating);
+    }
 
     new enforceRates = GetConVarInt(hEnforceRates);
     if (0 != enforceRates)
@@ -478,12 +485,14 @@ public OnMapStart()
         {
             if (IsValidPlayer(i) && !IsFakeClient(i))
             {
+                decl Float:rating;
                 decl String:auth[STEAMID_LEN];
                 GetClientAuthString(i, auth, sizeof(auth));
                 if (GpWeb_Enabled())
-                    GpWeb_FetchPlayerRating(auth);
+                    rating = GpWeb_FetchPlayerRating(auth);
                 else
-                    GpSkill_FetchPlayerRating(auth);
+                    rating = GpSkill_FetchPlayerRating(auth);
+                SetTrieValue(hPlayerRating, auth, rating);
             }
         }
     }
