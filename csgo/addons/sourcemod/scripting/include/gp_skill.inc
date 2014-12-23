@@ -68,17 +68,29 @@ Float:GpSkill_FetchPlayerRating(const String:auth[])
         }
 
         decl String:query[512];
-        Format(query, sizeof(query), "SELECT rating, variance FROM gpskill WHERE steam_id = '%s'", auth);
+        Format(query, sizeof(query), "SELECT (rating - 3.0 * variance) FROM gpskill WHERE steam_id = '%s' LIMIT 1", auth);
         new Handle:hResult = SQL_Query(hGpSkillConn, query);
+
+        if (INVALID_HANDLE == hResult)
+        {
+            if (SQL_GetError(hGpSkillConn, error, sizeof(error)))
+                LogError("Could not retrieve rating for %s: %s", auth, error);
+            else
+                LogError("Could not retrieve rating for %s", auth);
+            return 0.0;
+        }
 
         new Float:conservativeRating = 0.0;
         if (SQL_FetchRow(hResult))
         {
-            new Float:rating = SQL_FetchFloat(hResult, 0);
-            new Float:variance = SQL_FetchFloat(hResult, 1);
-            conservativeRating = rating - 3.0 * variance;
+            conservativeRating = SQL_FetchFloat(hResult, 0);
+            PrintToServer("Got rating for %s: %.03f", auth, conservativeRating);
             if (conservativeRating < 0.0)
                 conservativeRating = 0.0;
+        }
+        else
+        {
+            PrintToServer("No rating results for %s", auth);
         }
         CloseHandle(hResult);
         return conservativeRating;

@@ -90,7 +90,10 @@ new Handle:hMatchMaps = INVALID_HANDLE;
 new Handle:hWarmupMapKeys = INVALID_HANDLE;
 new Handle:hWarmupMaps = INVALID_HANDLE;
 
-new bool:g_playerReady[MAXPLAYERS + 1];
+new Handle:hPlayerReadyArray = INVALID_HANDLE;
+new Handle:hPlayerWaitingNameArray = INVALID_HANDLE;
+new Handle:hPlayerWaitingAuthArray = INVALID_HANDLE;
+new Handle:hPlayerDisconnectTimersTrie = INVALID_HANDLE;
 
 new Handle:hPlayerRating = INVALID_HANDLE;
 new Handle:hSortedClients = INVALID_HANDLE;
@@ -185,6 +188,11 @@ public OnPluginStart()
     hSaveScore = CreateTrie();
     hSaveMvps = CreateTrie();
 
+    hPlayerReadyArray = CreateArray(STEAMID_LEN);
+    hPlayerWaitingAuthArray = CreateArray(STEAMID_LEN);
+    hPlayerWaitingNameArray = CreateArray(MAX_NAME_LENGTH);
+    hPlayerDisconnectTimersTrie = CreateTrie();
+
     ResetReadyUp();
 
     GpTeam_Init();
@@ -225,10 +233,113 @@ public OnPluginEnd()
         CloseHandle(hSaveMvps);
     if (hRestrictCaptainsLimit != INVALID_HANDLE)
         CloseHandle(hRestrictCaptainsLimit);
+    if (hPlayerReadyArray != INVALID_HANDLE)
+        CloseHandle(hPlayerReadyArray);
+    if (hPlayerWaitingAuthArray != INVALID_HANDLE)
+        CloseHandle(hPlayerWaitingAuthArray);
+    if (hPlayerWaitingNameArray != INVALID_HANDLE)
+        CloseHandle(hPlayerWaitingNameArray);
+    if (hPlayerDisconnectTimersTrie != INVALID_HANDLE)
+        CloseHandle(hPlayerDisconnectTimersTrie);
 
     GpSkill_Fini();
     GpWeb_Fini();
     GpTeam_Fini();
+}
+
+ClearTimerForClient(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    ClearTimerForAuth(auth);
+}
+
+ClearTimerForAuth(String:auth[])
+{
+    decl Handle:timer;
+    GetTrieValue(hPlayerDisconnectTimersTrie, auth, timer);
+    RemoveFromTrie(hPlayerDisconnectTimersTrie, auth);
+    KillTimer(timer);
+}
+
+SetTimerForClient(client, Handle:timer)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    SetTrieValue(hPlayerDisconnectTimersTrie, auth, timer);
+}
+
+MoveFromWaitingToReady(client)
+{
+    ClearTimerForClient(client);
+    UnWaitClient(client);
+    ReadyClient(client);
+}
+
+MoveFromReadyToWaiting(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    decl String:name[MAX_NAME_LENGTH];
+    GetClientName(client, name, sizeof(name));
+
+    new Handle:dataPack;
+    new Handle:timer = CreateDataTimer(30.0, Timer_UnreadyPlayer, dataPack);
+
+    WritePackString(dataPack, auth);
+    WritePackString(dataPack, name);
+
+    SetTimerForClient(client, timer);
+    UnReadyClient(client);
+    WaitClient(client);
+}
+
+MoveFromWaitingToDisconnected(String:auth[])
+{
+    ClearTimerForAuth(auth);
+    UnWaitClientByAuth(auth);
+}
+
+UnWaitClientByAuth(String:auth[])
+{
+    new playerIndex = FindStringInArray(hPlayerWaitingAuthArray, auth);
+
+    if (playerIndex > -1)
+    {
+        RemoveFromArray(hPlayerWaitingAuthArray, playerIndex);
+        RemoveFromArray(hPlayerWaitingNameArray, playerIndex);
+    }
+}
+
+UnWaitClient(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    UnWaitClientByAuth(auth);
+}
+
+WaitClient(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    decl String:name[MAX_NAME_LENGTH];
+    GetClientName(client, name, sizeof(name));
+
+    PushArrayString(hPlayerWaitingAuthArray, auth);
+    PushArrayString(hPlayerWaitingNameArray, name);
+}
+
+ClientIsWaiting(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    return FindStringInArray(hPlayerWaitingAuthArray, auth) > -1;
 }
 
 public OnClientAuthorized(client, const String:auth[])
@@ -242,11 +353,22 @@ public OnClientAuthorized(client, const String:auth[])
     GetClientName(client, playerName, sizeof(playerName));
     PrintToChatAll("\x01\x0b\x04%s connected", playerName);
 
-    g_playerReady[client] = false;
+    if (ClientIsWaiting(client))
+    {
+        MoveFromWaitingToReady(client);
+    }
+
+    new Float:rating = 0.0;
     if (GpWeb_Enabled())
-        GpWeb_FetchPlayerRating(auth);
+    {
+        rating = GpWeb_FetchPlayerRating(auth);
+        SetTrieValue(hPlayerRating, auth, rating);
+    }
     else if (GpSkill_Enabled())
-        GpSkill_FetchPlayerRating(auth);
+    {
+        rating = GpSkill_FetchPlayerRating(auth);
+        SetTrieValue(hPlayerRating, auth, rating);
+    }
 
     new enforceRates = GetConVarInt(hEnforceRates);
     if (0 != enforceRates)
@@ -363,12 +485,14 @@ public OnMapStart()
         {
             if (IsValidPlayer(i) && !IsFakeClient(i))
             {
+                decl Float:rating;
                 decl String:auth[STEAMID_LEN];
                 GetClientAuthString(i, auth, sizeof(auth));
                 if (GpWeb_Enabled())
-                    GpWeb_FetchPlayerRating(auth);
+                    rating = GpWeb_FetchPlayerRating(auth);
                 else
-                    GpSkill_FetchPlayerRating(auth);
+                    rating = GpSkill_FetchPlayerRating(auth);
+                SetTrieValue(hPlayerRating, auth, rating);
             }
         }
     }
@@ -390,7 +514,7 @@ public OnMapStart()
         {
             ChangeMatchState(MS_WARMUP);
             ServerCommand("exec goonpug_warmup.cfg\n");
-            StartReadyUp(true);
+            StartReadyUp(false);
         }
     }
 }
@@ -435,6 +559,20 @@ bool:IsValidPlayer(client)
     if (client > 0 && client <= MaxClients
         && IsClientConnected(client)
         && IsClientInGame(client))
+    {
+        if (IsClientSourceTV(client))
+        {
+                return false;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool:IsValidPlayerForReady(client)
+{
+    if (client > 0 && client <= MaxClients
+        && IsClientConnected(client))
     {
         if (IsClientSourceTV(client))
         {
@@ -635,10 +773,7 @@ public CurlReceiveCb(Handle:hCurl, const String:buffer[], const bytes, const nme
  */
 ResetReadyUp()
 {
-    for (new i = 0; i <= MaxClients; i++)
-    {
-        g_playerReady[i] = false;
-    }
+    ClearArray(hPlayerReadyArray);
 }
 
 /**
@@ -660,13 +795,41 @@ bool:NeedReadyUp()
 {
     switch (g_matchState)
     {
-        case MS_LIVE, MS_POST_MATCH, MS_OT:
+        case MS_LIVE, MS_OT:
         {
             return false;
         }
     }
 
     return true;
+}
+
+UnReadyClient(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    if (ClientIsReady(client))
+        RemoveFromArray(hPlayerReadyArray, FindStringInArray(hPlayerReadyArray, auth));
+}
+
+ReadyClient(client)
+{
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    if (!ClientIsReady(client))
+        PushArrayString(hPlayerReadyArray, auth);
+}
+
+bool:ClientIsReady(client)
+{
+    if (!IsValidPlayerForReady(client)) return false;
+
+    decl String:auth[STEAMID_LEN];
+    GetClientAuthString(client, auth, sizeof(auth));
+
+    return (FindStringInArray(hPlayerReadyArray, auth) > -1);
 }
 
 /**
@@ -685,21 +848,28 @@ public Action:Timer_ReadyUp(Handle:timer)
         neededCount = CountActivePlayers(GP_TEAM_1) + CountActivePlayers(GP_TEAM_2);
     }
 
-    new readyCount = CountReady();
+    new readyCount = CountReadyAndInGame();
     if (readyCount == neededCount)
     {
-        OnAllReady();
-        return Plugin_Stop;
+        if (g_matchState == MS_POST_MATCH)
+        {
+            return Plugin_Continue;
+        }
+        else
+        {
+            OnAllReady();
+            return Plugin_Stop;
+        }
     }
 
     for (new i = 1; i <= MaxClients; i++)
     {
-        if (IsValidPlayer(i) && !IsFakeClient(i))
+        if (IsValidPlayerForReady(i) && !IsFakeClient(i))
         {
             decl String:msg[1024];
             Format(msg, sizeof(msg), "Ready: %d/%d - ", readyCount, neededCount);
 
-            if (g_playerReady[i])
+            if (ClientIsReady(i))
                 StrCat(msg, sizeof(msg), "You are ready\n");
             else
                 StrCat(msg, sizeof(msg), "Say .ready to ready up\n");
@@ -710,7 +880,7 @@ public Action:Timer_ReadyUp(Handle:timer)
                 {
                     decl String:name[MAX_NAME_LENGTH];
                     GetClientName(j, name, sizeof(name));
-                    if (!g_playerReady[j] && GetClientTeam(j) != CS_TEAM_SPECTATOR)
+                    if (!ClientIsReady(j) && GetClientTeam(j) != CS_TEAM_SPECTATOR)
                     {
                         if (first)
                         {
@@ -721,6 +891,21 @@ public Action:Timer_ReadyUp(Handle:timer)
                             StrCat(msg, sizeof(msg), ", ");
                         StrCat(msg, sizeof(msg), name);
                     }
+                }
+            }
+
+            if (GetArraySize(hPlayerWaitingNameArray))
+            {
+                StrCat(msg, sizeof(msg), "\nWaiting For: ");
+
+                for (new k = 0; k < GetArraySize(hPlayerWaitingNameArray); k++)
+                {
+                    if (k != 0) StrCat(msg, sizeof(msg), ", ");
+
+                    decl String:waitingName[MAX_NAME_LENGTH];
+                    GetArrayString(hPlayerWaitingNameArray, k, waitingName, sizeof(waitingName));
+
+                    StrCat(msg, sizeof(msg), waitingName);
                 }
             }
 
@@ -739,9 +924,9 @@ CountReady()
 
     for (new i = 1; i < MaxClients; i++)
     {
-        if (IsValidPlayer(i))
+        if (IsValidPlayerForReady(i))
         {
-            if (g_playerReady[i])
+            if (ClientIsReady(i))
             {
                 playerCount++;
             }
@@ -749,6 +934,29 @@ CountReady()
     }
 
     return playerCount;
+}
+
+CountReadyAndInGame()
+{
+    new playerCount = 0;
+
+    for (new i = 1; i < MaxClients; i++)
+    {
+        if (IsValidPlayer(i) && (GetClientTeam(i) != CS_TEAM_SPECTATOR))
+        {
+            if (ClientIsReady(i))
+            {
+                playerCount++;
+            }
+        }
+    }
+
+    return playerCount;
+}
+
+CountWaiting()
+{
+    return GetArraySize(hPlayerWaitingNameArray);
 }
 
 /**
@@ -782,11 +990,11 @@ public Action:Command_Ready(client, args)
         return Plugin_Handled;
     }
 
-    if (g_playerReady[client])
+    if (ClientIsReady(client))
     {
         PrintToChat(client, "[GP] You are already ready.");
     }
-    else if (CountReady() < g_maxPlayers)
+    else if ((CountReady() + CountWaiting()) < g_maxPlayers)
     {
         switch (g_matchState)
         {
@@ -829,7 +1037,7 @@ public Action:Command_Ready(client, args)
 
         decl String:name[MAX_NAME_LENGTH];
         GetClientName(client, name, sizeof(name));
-        g_playerReady[client] = true;
+        ReadyClient(client);
         PrintToChatAll("[GP] %s is now ready.", name);
     }
     else
@@ -852,7 +1060,7 @@ public Action:Command_Unready(client, args)
     }
 
 
-    if (!g_playerReady[client])
+    if (!ClientIsReady(client))
     {
         PrintToChat(client, "[GP] You are already not ready.");
     }
@@ -868,13 +1076,27 @@ public Action:Command_Unready(client, args)
             {
                 decl String:name[MAX_NAME_LENGTH];
                 GetClientName(client, name, sizeof(name));
-                g_playerReady[client] = false;
+                UnReadyClient(client);
                 PrintToChatAll("[GP] %s is no longer ready.", name);
             }
         }
     }
 
     return Plugin_Handled;
+}
+
+public Action:Timer_UnreadyPlayer(Handle:timer, Handle:pack)
+{
+    ResetPack(pack);
+    decl String:name[MAX_NAME_LENGTH];
+    decl String:auth[STEAMID_LEN];
+    ReadPackString(pack, auth, sizeof(auth));
+    ReadPackString(pack, name, sizeof(name));
+
+    MoveFromWaitingToDisconnected(auth);
+
+    PrintToChatAll("[GP] %s has been unreadied after 30 seconds of disconnection.", name);
+    PrintToServer("[GP] %s has been unreadied after 30 seconds of disconnection.", name);
 }
 
 /**
@@ -906,7 +1128,7 @@ public Action:Event_PlayerDisconnect(
     {
         case MS_PICK_CAPTAINS, MS_PICK_TEAMS:
         {
-            if (g_playerReady[client])
+            if (ClientIsReady(client))
             {
                 ChangeMatchState(MS_PICK_CAPTAINS);
                 PrintToChatAll("[GP] Will restart picking teams when we have enough players...");
@@ -915,9 +1137,21 @@ public Action:Event_PlayerDisconnect(
         }
         // Previously there was stuff about slot handling here. If a slot is
         // open a player can just join.
-    }
+        case MS_POST_MATCH, MS_WARMUP:
+        {
+            if (ClientIsReady(client))
+            {
+                PrintToServer("[GP] Waiting 30 seconds for %s to return.", playerName);
+                PrintToChatAll("[GP] Waiting 30 seconds for %s to return.", playerName);
 
-    g_playerReady[client] = false;
+                MoveFromReadyToWaiting(client);
+            }
+        }
+        default:
+        {
+            UnReadyClient(client);
+        }
+    }
 
     new cash = GetEntProp(client, Prop_Send, "m_iAccount");
     SetTrieValue(hSaveCash, auth, cash);
@@ -997,6 +1231,10 @@ OnAllReady()
             ChangeMatchState(MS_LIVE);
             g_period++;
         }
+        case MS_POST_MATCH:
+        {
+
+        }
 #if defined DEBUG
         default:
         {
@@ -1018,7 +1256,7 @@ ChooseMatchMap()
 
     for (new i = 1; i <= MaxClients; i++)
     {
-        if (g_playerReady[i])
+        if (ClientIsReady(i))
         {
             clients[clientCount] = i;
             clientCount++;
@@ -1118,7 +1356,7 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
 
         for (new i = 1; i <= MaxClients; i++)
         {
-            if (g_playerReady[i])
+            if (ClientIsReady(i))
             {
                 clients[clientCount] = i;
                 clientCount++;
@@ -1230,7 +1468,7 @@ ChooseCaptains()
     while (count < maxCaptains && i < GetArraySize(hSortedClients))
     {
         new client = GetArrayCell(hSortedClients, i);
-        if (g_playerReady[client])
+        if (ClientIsReady(client))
         {
             decl String:auth[STEAMID_LEN];
             GetClientAuthString(client, auth, sizeof(auth));
@@ -1283,7 +1521,7 @@ ChooseCaptains()
 
     for (i = 1; i <= MaxClients; i++)
     {
-        if (g_playerReady[i])
+        if (ClientIsReady(i))
         {
             clients[clientCount] = i;
             clientCount++;
@@ -1580,7 +1818,7 @@ PickTeams()
         if (i == g_captClients[0] || i == g_captClients[1])
             continue;
 
-        if (g_playerReady[i])
+        if (ClientIsReady(i))
         {
             PushArrayCell(hSortedClients, i);
         }
@@ -1729,7 +1967,7 @@ Handle:BuildPickMenu(pickNum)
         for (new i = 0; i < GetArraySize(hSortedClients); i++)
         {
             new client = GetArrayCell(hSortedClients, i);
-            LogError("  %d: client %d, ready: %d", i, client, g_playerReady[client]);
+            LogError("  %d: client %d, ready: %d", i, client, ClientIsReady(client));
         }
     }
     for (new i = 0; i < GetArraySize(hSortedClients); i++)
@@ -2060,7 +2298,7 @@ StartServerDemo()
     /* Strip workshop prefixes */
     decl String:strs[3][256];
     new numStrs = ExplodeString(map, "/", strs, 3, 256);
-    Format(g_demoname, sizeof(g_demoname), "%s_%s", timestamp, strs[numStrs - 1]);
+    Format(g_demoname, sizeof(g_demoname), "demos/%s_%s", timestamp, strs[numStrs - 1]);
     ServerCommand("tv_record %s.dem\n", g_demoname);
     LogToGame("Recording server demo: %s_%s.dem",  timestamp, strs[numStrs - 1]);
     g_recording = true;
@@ -2073,7 +2311,7 @@ StopServerDemo(bool:save=true)
     WritePackCell(hPack, save);
     WritePackString(hPack, g_demoname);
     // Need to wait here for tv_stoprecord to finish
-    CreateTimer(5.0, Timer_CompressDemo, hPack);
+    // CreateTimer(5.0, Timer_CompressDemo, hPack);
     g_recording = false;
 }
 
@@ -2104,11 +2342,10 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
                 CloseHandle(hZip);
                 LogToGame("Wrote compressed demo %s", zip);
                 DeleteFile(demo);
-                UploadDemo(zip);
             }
         }
         else
-        {   
+        {
             LogError("Could not open %s for writing", zip);
         }
     }
@@ -2116,92 +2353,6 @@ public Action:Timer_CompressDemo(Handle:timer, Handle:pack)
     {
         DeleteFile(demo);
     }
-}
-
-UploadDemo(const String:filename[])
-{
-    new Handle:netPublicAdr = FindConVar("net_public_adr");
-    decl String:ip[16];
-    GetConVarString(netPublicAdr, ip, sizeof(ip));
-
-    new Handle:hCurl = curl_easy_init();
-    if (hCurl == INVALID_HANDLE)
-        return;
-
-    new CURL_Default_opt[][2] = {
-        {_:CURLOPT_NOSIGNAL, 1},
-        {_:CURLOPT_NOPROGRESS, 1},
-        {_:CURLOPT_TIMEOUT, 90},
-        {_:CURLOPT_CONNECTTIMEOUT, 60},
-        {_:CURLOPT_VERBOSE, 0}
-    };
-    curl_easy_setopt_int_array(hCurl, CURL_Default_opt, sizeof(CURL_Default_opt));
-    new Handle:hPack = CreateDataPack();
-    curl_easy_setopt_function(hCurl, CURLOPT_WRITEFUNCTION, CurlReceiveCb, hPack);
-
-    // TODO: Use web server to manage different api keys for each server we
-    // know about
-    new Handle:hForm = curl_httppost();
-    decl String:key[PLATFORM_MAX_PATH];
-    if (strlen(ip) > 0)
-        Format(key, sizeof(key), "uploads/gotv/%s/%s", ip, filename);
-    else
-        Format(key, sizeof(key), "uploads/gotv/unknown/%s", filename);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "key", CURLFORM_COPYCONTENTS, key, CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "acl", CURLFORM_COPYCONTENTS, "public-read", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "AWSAccessKeyId", CURLFORM_COPYCONTENTS,
-                 "AKIAIS5ZO5F5TODWJ6ZQ", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "Policy", CURLFORM_COPYCONTENTS,
-                 "ewogICAgImV4cGlyYXRpb24iOiAiMjAxNC0wMS0wMVQwMDowMDowMFoiLAogICAgImNvbmRpdGlvbnMiOiBbCiAgICAgICAgeyJidWNrZXQiOiAiZ29vbnB1Zy1kZW1vcyJ9LAogICAgICAgIFsic3RhcnRzLXdpdGgiLCAiJGtleSIsICJ1cGxvYWRzLyJdLAogICAgICAgIHsiYWNsIjogInB1YmxpYy1yZWFkIn0sCiAgICAgICAgeyJDb250ZW50LVR5cGUiOiAiYXBwbGljYXRpb24vemlwIn0KICAgIF0KfQ==", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "signature", CURLFORM_COPYCONTENTS, "nh4qMbsylhC3xb+z2ybQ/Yzh4Ks=", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "Content-Type", CURLFORM_COPYCONTENTS, "application/zip", CURLFORM_END);
-    curl_formadd(hForm, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filename, CURLFORM_END);
-    curl_easy_setopt_handle(hCurl, CURLOPT_HTTPPOST, hForm);
-    curl_easy_setopt_string(hCurl, CURLOPT_URL, "http://goonpug-demos.s3.amazonaws.com");
-    PrintToServer("[GP] Uploading %s to S3...", filename);
-    LogMessage("[GP] Uploading %s to S3...", filename);
-    WritePackCell(hPack, hForm);
-    WritePackString(hPack, filename);
-    curl_easy_perform_thread(hCurl, UploadDemoCb, hPack);
-}
-
-public UploadDemoCb(Handle:hCurl, CURLcode:code, any:hPack)
-{
-    new endpos = GetPackPosition(hPack);
-    ResetPack(hPack);
-    new Handle:hForm = ReadPackCell(hPack);
-    CloseHandle(hForm);
-
-    if (CURLE_OK != code) {
-        LogError("Curl could not upload demo (%i)", code);
-        CloseHandle(hPack);
-        CloseHandle(hCurl);
-        return;
-    }
-
-    decl httpcode;
-    curl_easy_getinfo_int(hCurl, CURLINFO_RESPONSE_CODE, httpcode);
-    if (httpcode != 204)
-    {
-        LogError("Got unexpected response from AWS: %d", httpcode);
-    }
-    CloseHandle(hCurl);
-
-    decl String:filename[PLATFORM_MAX_PATH];
-    ReadPackString(hPack, filename, sizeof(filename));
-    DeleteFile(filename);
-
-    decl String:receiveStr[CURL_BUFSIZE];
-    strcopy(receiveStr, sizeof(receiveStr), "");
-    while (GetPackPosition(hPack) < endpos)
-    {
-        decl String:buf[CURL_BUFSIZE];
-        ReadPackString(hPack, buf, sizeof(buf));
-        StrCat(receiveStr, sizeof(receiveStr), buf);
-    }
-    LogMessage("Upload demo returned: %s", receiveStr);
-
-    CloseHandle(hPack);
 }
 
 public Action:Event_AnnouncePhaseEnd(Handle:event, const String:name[], bool:dontBroadcast)
@@ -2276,6 +2427,7 @@ PostMatch(bool:abort=false)
             PrintToChatAll("[GP] Will switch to warmup map when GOTV broadcast completes (%0.f seconds)", delay);
         }
         CreateTimer(delay, Timer_ChangeMap);
+        StartReadyUp(true);
     }
     else
     {
