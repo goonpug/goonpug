@@ -24,7 +24,7 @@ After all players have readied up, the following steps will occur:
 Requirements
 ------------
 
-- [SourceMod 1.5](http://www.sourcemod.net) - Either an official release build or a 1.5 (stable branch) snapshot should work
+- [SourceMod 1.6](http://www.sourcemod.net) - Either an official release build or a stable branch snapshot should work
 - [SM cURL](http://forums.alliedmods.net/showthread.php?t=152216)
 - [SMJansson](http://forums.alliedmods.net/showthread.php?t=184604)
 - [sm-zip](https://github.com/pmrowla/sm-zip)
@@ -114,9 +114,9 @@ Currently, the plugin admin commands do not appear in the `sm_admin` menu.
 
 -   `/lo3` Start a match with the current teams and on the current map.
 -   `/endmatch` End the current match.
-    Match results and stats will be saved to the GoonPUG server and the GO:TV demo will be saved and uploaded to S3.
+    Match results and stats will be saved to the GoonPUG server and the GO:TV demo will be saved.
 -   `/abortmatch` Abort the current match.
-    Match results and stats will not be saved and the GO:TV demo will not be uploaded to S3.
+    Match results and stats will not be saved and the GO:TV demo will be discarded.
 -   `/restartmatch` Restart the current match.
     Note that if the match is in the second half, the plugin will swap the teams back to the sides they originally started on.
 
@@ -131,7 +131,6 @@ Notes
 -----
 
 GO:TV match demos will be automatically recorded and saved if GO:TV is enabled on the server.
-Upon conclusion of the match, the GO:TV demo will be automatically compressed into a .zip file and uploaded to an Amazon S3 bucket.
 
 
 License
