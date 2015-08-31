@@ -564,6 +564,13 @@ bool:IsValidPlayer(client)
         {
                 return false;
         }
+        //ban Mr Pink
+        decl String:auth[STEAMID_LEN];
+        GetClientAuthString(client, auth, sizeof(auth));
+        if (auth == 'STEAM_0:0:27685710')
+        {
+                return false;
+        }
         return true;
     }
     return false;
@@ -1335,7 +1342,7 @@ public VoteHandler_MapVote(Handle:menu, num_votes, num_clients, const client_inf
 {
     new Float:winningvotes = float(item_info[0][VOTEINFO_ITEM_VOTES]);
     new Float:required = float(num_votes) * 0.5;
-    
+
     if (winningvotes < required)
     {
         /* runoff map vote */
@@ -2494,7 +2501,7 @@ public VoteHandler_OvertimeVote(Handle:menu, num_votes, num_clients, const clien
     new Float:required = float(num_votes) * 0.5;
     decl String:result[8];
     GetMenuItem(menu, item_info[0][VOTEINFO_ITEM_INDEX], result, sizeof(result));
-    
+
     if (StrEqual(result, "Yes") && winningvotes > required)
     {
         PrintToChatAll("[GP] Vote to play OT wins (%0.f%%).", (winningvotes / float(num_votes) * 100.0));
