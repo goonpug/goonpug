@@ -1130,7 +1130,7 @@ public Action:Event_PlayerDisconnect(
         {
             if (ClientIsReady(client))
             {
-                ChangeMatchState(MS_PICK_CAPTAINS);
+                ChangeMatchState(MS_WARMUP);
                 PrintToChatAll("[GP] Will restart picking teams when we have enough players...");
                 StartReadyUp(false);
             }
